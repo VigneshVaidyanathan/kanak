@@ -1,0 +1,141 @@
+# Architecture Rules
+
+## Client-Server Separation
+
+**CRITICAL**: Client-side code (components, stores, hooks) MUST NOT directly import or call functions from `packages/api`. These are server-side only functions that require Node.js runtime.
+
+### Rule
+- ✅ **DO**: Call API routes via `fetch('/api/...')` from client-side code
+- ❌ **DON'T**: Import or call functions from `@expensify-app/api` package directly from client components, stores, or hooks
+
+### Examples
+
+**❌ WRONG** (Client-side code):
+```typescript
+import { verifyToken } from '@expensify-app/api';
+
+// In a client component or store
+await verifyToken(token); // This will fail - server-only function
+```
+
+**✅ CORRECT** (Client-side code):
+```typescript
+// In a client component or store
+const response = await fetch('/api/auth/verify', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ token }),
+});
+const data = await response.json();
+```
+
+**✅ CORRECT** (Server-side code - API routes):
+```typescript
+// In apps/web/src/app/api/**/route.ts
+import { verifyToken } from '@expensify-app/api';
+
+export async function POST(request: NextRequest) {
+  const { token } = await request.json();
+  const decoded = await verifyToken(token); // OK - this is server-side
+  return NextResponse.json({ valid: true });
+}
+```
+
+### Why?
+- `packages/api` contains server-only code that uses Node.js APIs (database, JWT, etc.)
+- Client-side code runs in the browser and cannot access Node.js APIs
+- API routes (`/api/*`) run on the server and can safely use `packages/api` functions
+- This maintains proper separation between client and server code
+
+### Where this applies
+- Client components (`'use client'` directives)
+- Zustand stores (client-side state management)
+- React hooks used in client components
+- Any code that runs in the browser
+
+### Where this does NOT apply
+- API route handlers (`apps/web/src/app/api/**/route.ts`)
+- Server components (Next.js App Router)
+- Server actions (when properly configured)
+- Build-time code (config files, etc.)
+
+## Function Typing
+
+**CRITICAL**: All functions MUST have explicit type annotations for parameters and return types. TypeScript inference is not sufficient - types must be explicitly declared.
+
+### Rule
+- ✅ **DO**: Explicitly type all function parameters and return types
+- ❌ **DON'T**: Rely on TypeScript inference for function signatures
+- ❌ **DON'T**: Use `any` type (use `unknown` if type is truly unknown, then narrow it)
+
+### Examples
+
+**❌ WRONG** (Untyped function):
+```typescript
+function processData(data) {
+  return data.map(item => item.value);
+}
+
+const handleClick = (e) => {
+  console.log(e.target);
+};
+```
+
+**✅ CORRECT** (Fully typed function):
+```typescript
+interface DataItem {
+  value: string;
+}
+
+function processData(data: DataItem[]): string[] {
+  return data.map((item: DataItem) => item.value);
+}
+
+const handleClick = (e: React.MouseEvent<HTMLButtonElement>): void => {
+  console.log(e.target);
+};
+```
+
+**❌ WRONG** (Using `any`):
+```typescript
+function parseResponse(response: any): any {
+  return response.data;
+}
+```
+
+**✅ CORRECT** (Using proper types or `unknown`):
+```typescript
+interface ApiResponse {
+  data: unknown;
+}
+
+function parseResponse(response: ApiResponse): unknown {
+  return response.data;
+}
+
+// Or with proper narrowing:
+function parseResponse<T>(response: { data: T }): T {
+  return response.data;
+}
+```
+
+### Why?
+- Explicit types improve code readability and maintainability
+- Type annotations serve as documentation
+- Catches type errors at compile time
+- Makes refactoring safer and easier
+- Improves IDE autocomplete and IntelliSense
+
+### Where this applies
+- All function declarations (`function`, `const fn =`, arrow functions)
+- Method definitions in classes
+- React component props and return types
+- Event handlers
+- Callback functions
+- API route handlers
+- Utility functions
+- Store actions and methods
+
+### Exceptions
+- React component function declarations can use implicit return type inference for JSX, but props must be typed
+- Generic type parameters can be inferred in some cases, but should be explicit when possible

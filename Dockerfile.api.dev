@@ -1,0 +1,19 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install dependencies
+COPY package.json package-lock.json* ./
+COPY packages/*/package.json* ./packages/*/
+RUN npm ci
+
+# Copy source code
+COPY packages/api/ ./packages/api/
+COPY packages/utils/ ./packages/utils/
+
+# Build the API
+RUN npm run build --workspace=@kanak-app/api
+
+EXPOSE 3001
+
+CMD ["npm", "run", "dev"]

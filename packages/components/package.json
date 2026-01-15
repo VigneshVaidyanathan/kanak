@@ -1,0 +1,31 @@
+{
+  "name": "@kanak/components",
+  "version": "0.1.0",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@kanak/ui": "*",
+    "@tabler/icons-react": "^3.21.0",
+    "@tanstack/react-virtual": "^3.13.13",
+    "date-fns": "^4.1.0",
+    "dayjs": "^1.11.19",
+    "fuse.js": "^7.1.0",
+    "react-day-picker": "^9.13.0",
+    "react-hook-form": "^7.69.0",
+    "usehooks-ts": "^3.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "react": "^18.3.1",
+    "typescript": "^5"
+  },
+  "peerDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

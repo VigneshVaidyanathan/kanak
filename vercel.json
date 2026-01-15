@@ -1,0 +1,7 @@
+{
+  "buildCommand": "turbo run build --filter=@kanak/web",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "rootDirectory": "apps/web",
+  "outputDirectory": ".next"
+}

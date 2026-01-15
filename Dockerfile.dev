@@ -1,0 +1,27 @@
+FROM node:18-alpine AS base
+
+# Install dependencies only when needed
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+# Install dependencies
+COPY package.json package-lock.json* ./
+COPY apps/web/package.json apps/web/package-lock.json* ./apps/web/
+COPY packages/*/package.json* ./packages/*/
+RUN npm ci
+
+# Development builder
+FROM base AS dev
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
+COPY --from=deps /app/packages/*/node_modules ./packages/*/
+
+COPY . .
+
+# Generate Prisma client
+RUN npm run db:generate
+
+EXPOSE 3000
+CMD ["npm", "run", "dev"]
