@@ -1,6 +1,7 @@
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import { CreateBankAccountInput, UpdateBankAccountInput } from '@kanak/shared';
 import { getConvexClient } from './db';
-import type { Id } from 'convex/server';
 
 // Helper to convert Convex bank account to API format
 function convertBankAccountFromConvex(bankAccount: any): any {
@@ -24,8 +25,8 @@ export async function getBankAccountsByUserId(
   activeOnly: boolean = true
 ): Promise<any[]> {
   const convex = await getConvexClient();
-  const bankAccounts = await (convex.query as any)(
-    'bankAccounts:getBankAccountsByUserId',
+  const bankAccounts = await convex.query(
+    api.bankAccounts.getBankAccountsByUserId,
     {
       userId: userId as Id<'users'>,
       activeOnly,
@@ -39,13 +40,10 @@ export async function getBankAccountById(
   userId: string
 ): Promise<any> {
   const convex = await getConvexClient();
-  const bankAccount = await (convex.query as any)(
-    'bankAccounts:getBankAccountById',
-    {
-      id: id as Id<'bank_accounts'>,
-      userId: userId as Id<'users'>,
-    }
-  );
+  const bankAccount = await convex.query(api.bankAccounts.getBankAccountById, {
+    id: id as Id<'bank_accounts'>,
+    userId: userId as Id<'users'>,
+  });
   return convertBankAccountFromConvex(bankAccount);
 }
 
@@ -54,8 +52,8 @@ export async function createBankAccount(
   input: CreateBankAccountInput
 ): Promise<any> {
   const convex = await getConvexClient();
-  const bankAccount = await (convex.mutation as any)(
-    'bankAccounts:createBankAccount',
+  const bankAccount = await convex.mutation(
+    api.bankAccounts.createBankAccount,
     {
       userId: userId as Id<'users'>,
       name: input.name,
@@ -75,8 +73,8 @@ export async function updateBankAccount(
   input: UpdateBankAccountInput
 ): Promise<any> {
   const convex = await getConvexClient();
-  const bankAccount = await (convex.mutation as any)(
-    'bankAccounts:updateBankAccount',
+  const bankAccount = await convex.mutation(
+    api.bankAccounts.updateBankAccount,
     {
       id: id as Id<'bank_accounts'>,
       userId: userId as Id<'users'>,
@@ -96,8 +94,8 @@ export async function deactivateBankAccount(
   userId: string
 ): Promise<any> {
   const convex = await getConvexClient();
-  const bankAccount = await (convex.mutation as any)(
-    'bankAccounts:deactivateBankAccount',
+  const bankAccount = await convex.mutation(
+    api.bankAccounts.deactivateBankAccount,
     {
       id: id as Id<'bank_accounts'>,
       userId: userId as Id<'users'>,

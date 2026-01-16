@@ -6,7 +6,8 @@ import {
   CreateWealthEntriesInput,
 } from '@kanak/shared';
 import { getConvexClient } from './db';
-import { Id } from 'convex/values';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 
 // Helper to convert timestamp to Date
 function timestampToDate(timestamp: number): Date {
@@ -79,7 +80,7 @@ export async function getWealthSectionsByUserId(
   userId: string
 ): Promise<any[]> {
   const convex = await getConvexClient();
-  const sections = await convex.query('wealth:getWealthSectionsByUserId', {
+  const sections = await convex.query(api.wealth.getWealthSectionsByUserId, {
     userId: userId as Id<'users'>,
   });
   return sections.map(convertWealthSectionFromConvex);
@@ -90,7 +91,7 @@ export async function createWealthSection(
   input: CreateWealthSectionInput
 ): Promise<any> {
   const convex = await getConvexClient();
-  const section = await convex.mutation('wealth:createWealthSection', {
+  const section = await convex.mutation(api.wealth.createWealthSection, {
     userId: userId as Id<'users'>,
     name: input.name,
     color: input.color,
@@ -106,7 +107,7 @@ export async function updateWealthSection(
   input: UpdateWealthSectionInput
 ): Promise<any> {
   const convex = await getConvexClient();
-  const section = await convex.mutation('wealth:updateWealthSection', {
+  const section = await convex.mutation(api.wealth.updateWealthSection, {
     userId: userId as Id<'users'>,
     id: id as Id<'wealth_sections'>,
     name: input.name,
@@ -122,7 +123,7 @@ export async function softDeleteWealthSection(
   id: string
 ): Promise<any> {
   const convex = await getConvexClient();
-  const section = await convex.mutation('wealth:softDeleteWealthSection', {
+  const section = await convex.mutation(api.wealth.softDeleteWealthSection, {
     userId: userId as Id<'users'>,
     id: id as Id<'wealth_sections'>,
   });
@@ -135,7 +136,7 @@ export async function createWealthLineItem(
   input: CreateWealthLineItemInput
 ): Promise<any> {
   const convex = await getConvexClient();
-  const lineItem = await convex.mutation('wealth:createWealthLineItem', {
+  const lineItem = await convex.mutation(api.wealth.createWealthLineItem, {
     userId: userId as Id<'users'>,
     sectionId: input.sectionId as Id<'wealth_sections'>,
     name: input.name,
@@ -150,7 +151,7 @@ export async function updateWealthLineItem(
   input: UpdateWealthLineItemInput
 ): Promise<any> {
   const convex = await getConvexClient();
-  const lineItem = await convex.mutation('wealth:updateWealthLineItem', {
+  const lineItem = await convex.mutation(api.wealth.updateWealthLineItem, {
     userId: userId as Id<'users'>,
     id: id as Id<'wealth_line_items'>,
     sectionId: input.sectionId
@@ -167,7 +168,7 @@ export async function softDeleteWealthLineItem(
   id: string
 ): Promise<any> {
   const convex = await getConvexClient();
-  const lineItem = await convex.mutation('wealth:softDeleteWealthLineItem', {
+  const lineItem = await convex.mutation(api.wealth.softDeleteWealthLineItem, {
     userId: userId as Id<'users'>,
     id: id as Id<'wealth_line_items'>,
   });
@@ -180,7 +181,7 @@ export async function getWealthEntriesByDate(
   date: Date
 ): Promise<any[]> {
   const convex = await getConvexClient();
-  const entries = await convex.query('wealth:getWealthEntriesByDate', {
+  const entries = await convex.query(api.wealth.getWealthEntriesByDate, {
     userId: userId as Id<'users'>,
     date: dateToTimestamp(date),
   });
@@ -193,7 +194,7 @@ export async function getWealthEntriesByDateRange(
   endDate: Date
 ): Promise<any[]> {
   const convex = await getConvexClient();
-  const entries = await convex.query('wealth:getWealthEntriesByDateRange', {
+  const entries = await convex.query(api.wealth.getWealthEntriesByDateRange, {
     userId: userId as Id<'users'>,
     startDate: dateToTimestamp(startDate),
     endDate: dateToTimestamp(endDate),
@@ -206,14 +207,17 @@ export async function createOrUpdateWealthEntries(
   input: CreateWealthEntriesInput
 ): Promise<any[]> {
   const convex = await getConvexClient();
-  const entries = await convex.mutation('wealth:createOrUpdateWealthEntries', {
-    userId: userId as Id<'users'>,
-    date: dateToTimestamp(input.date),
-    entries: input.entries.map((e) => ({
-      lineItemId: e.lineItemId as Id<'wealth_line_items'>,
-      amount: e.amount,
-    })),
-  });
+  const entries = await convex.mutation(
+    api.wealth.createOrUpdateWealthEntries,
+    {
+      userId: userId as Id<'users'>,
+      date: dateToTimestamp(input.date),
+      entries: input.entries.map((e) => ({
+        lineItemId: e.lineItemId as Id<'wealth_line_items'>,
+        amount: e.amount,
+      })),
+    }
+  );
   return entries.map(convertWealthEntryFromConvex);
 }
 
@@ -223,7 +227,7 @@ export async function updateWealthSectionsOrder(
   updates: Array<{ id: string; order: number }>
 ): Promise<any[]> {
   const convex = await getConvexClient();
-  const sections = await convex.mutation('wealth:updateWealthSectionsOrder', {
+  const sections = await convex.mutation(api.wealth.updateWealthSectionsOrder, {
     userId: userId as Id<'users'>,
     updates: updates.map((u) => ({
       id: u.id as Id<'wealth_sections'>,
@@ -238,12 +242,15 @@ export async function updateWealthLineItemsOrder(
   updates: Array<{ id: string; order: number }>
 ): Promise<any[]> {
   const convex = await getConvexClient();
-  const lineItems = await convex.mutation('wealth:updateWealthLineItemsOrder', {
-    userId: userId as Id<'users'>,
-    updates: updates.map((u) => ({
-      id: u.id as Id<'wealth_line_items'>,
-      order: u.order,
-    })),
-  });
+  const lineItems = await convex.mutation(
+    api.wealth.updateWealthLineItemsOrder,
+    {
+      userId: userId as Id<'users'>,
+      updates: updates.map((u) => ({
+        id: u.id as Id<'wealth_line_items'>,
+        order: u.order,
+      })),
+    }
+  );
   return lineItems.map(convertWealthLineItemFromConvex);
 }

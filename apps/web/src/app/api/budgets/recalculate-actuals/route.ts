@@ -1,7 +1,8 @@
 import { verifyAuth } from '@/lib/auth';
 import { getConvexClient } from '@kanak/api';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import { NextRequest, NextResponse } from 'next/server';
-import { Id } from 'convex/values';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
 
     // Get all transactions for the user
     const allTransactions = await convex.query(
-      'transactions:getTransactionsByUserId',
+      api.transactions.getTransactionsByUserId,
       {
         userId: authPayload.userId as Id<'users'>,
       }
@@ -43,10 +44,13 @@ export async function POST(request: NextRequest) {
     });
 
     // Get all categories for the user
-    const categories = await convex.query('categories:getCategoriesByUserId', {
-      userId: authPayload.userId as Id<'users'>,
-      activeOnly: false,
-    });
+    const categories = await convex.query(
+      api.categories.getCategoriesByUserId,
+      {
+        userId: authPayload.userId as Id<'users'>,
+        activeOnly: false,
+      }
+    );
 
     // Create a map of category titles
     const categoryMap = new Map(categories.map((cat: any) => [cat.title, cat]));
@@ -77,7 +81,7 @@ export async function POST(request: NextRequest) {
         const actualAmount = Math.abs(actual);
 
         // Update or create budget with actual using Convex mutation
-        return convex.mutation('budgets:updateBudgetActual', {
+        return convex.mutation(api.budgets.updateBudgetActual, {
           userId: authPayload.userId as Id<'users'>,
           categoryId,
           year,
@@ -88,7 +92,7 @@ export async function POST(request: NextRequest) {
 
     // Also set actual to 0 for categories that have budgets but no transactions
     const existingBudgets = await convex.query(
-      'budgets:getBudgetsByUserIdYearMonth',
+      api.budgets.getBudgetsByUserIdYearMonth,
       {
         userId: authPayload.userId as Id<'users'>,
         year,
@@ -102,7 +106,7 @@ export async function POST(request: NextRequest) {
     );
 
     const zeroPromises = categoriesToZero.map((budget: any) =>
-      convex.mutation('budgets:updateBudgetActual', {
+      convex.mutation(api.budgets.updateBudgetActual, {
         userId: authPayload.userId as Id<'users'>,
         categoryId: budget.categoryId,
         year,

@@ -3,7 +3,8 @@ import {
   UpdateTransactionRuleInput,
 } from '@kanak/shared';
 import { getConvexClient } from './db';
-import { Id } from 'convex/values';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 
 // Helper to convert Convex transaction rule to API format
 function convertTransactionRuleFromConvex(rule: any): any {
@@ -25,7 +26,7 @@ export async function getTransactionRulesByUserId(
 ): Promise<any[]> {
   const convex = await getConvexClient();
   const rules = await convex.query(
-    'transactionRules:getTransactionRulesByUserId',
+    api.transactionRules.getTransactionRulesByUserId,
     {
       userId: userId as Id<'users'>,
     }
@@ -38,7 +39,7 @@ export async function getTransactionRuleById(
   userId: string
 ): Promise<any> {
   const convex = await getConvexClient();
-  const rule = await convex.query('transactionRules:getTransactionRuleById', {
+  const rule = await convex.query(api.transactionRules.getTransactionRuleById, {
     id: id as Id<'transaction_rules'>,
     userId: userId as Id<'users'>,
   });
@@ -47,16 +48,19 @@ export async function getTransactionRuleById(
 
 export async function createTransactionRule(
   userId: string,
-  input: CreateTransactionRuleInput
+  input: CreateTransactionRuleInput & { order?: number }
 ): Promise<any> {
   const convex = await getConvexClient();
-  const rule = await convex.mutation('transactionRules:createTransactionRule', {
-    userId: userId as Id<'users'>,
-    title: input.title,
-    filter: input.filter,
-    action: input.action,
-    order: input.order,
-  });
+  const rule = await convex.mutation(
+    api.transactionRules.createTransactionRule,
+    {
+      userId: userId as Id<'users'>,
+      title: input.title,
+      filter: input.filter,
+      action: input.action,
+      order: input.order,
+    }
+  );
   return convertTransactionRuleFromConvex(rule);
 }
 
@@ -66,14 +70,17 @@ export async function updateTransactionRule(
   input: UpdateTransactionRuleInput
 ): Promise<any> {
   const convex = await getConvexClient();
-  const rule = await convex.mutation('transactionRules:updateTransactionRule', {
-    id: id as Id<'transaction_rules'>,
-    userId: userId as Id<'users'>,
-    title: input.title,
-    filter: input.filter,
-    action: input.action,
-    order: input.order,
-  });
+  const rule = await convex.mutation(
+    api.transactionRules.updateTransactionRule,
+    {
+      id: id as Id<'transaction_rules'>,
+      userId: userId as Id<'users'>,
+      title: input.title,
+      filter: input.filter,
+      action: input.action,
+      order: input.order,
+    }
+  );
   return convertTransactionRuleFromConvex(rule);
 }
 
@@ -83,7 +90,7 @@ export async function deleteTransactionRule(
 ): Promise<any> {
   const convex = await getConvexClient();
   const deletedRule = await convex.mutation(
-    'transactionRules:deleteTransactionRule',
+    api.transactionRules.deleteTransactionRule,
     {
       id: id as Id<'transaction_rules'>,
       userId: userId as Id<'users'>,
@@ -98,7 +105,7 @@ export async function updateTransactionRulesOrder(
 ): Promise<any[]> {
   const convex = await getConvexClient();
   const rules = await convex.mutation(
-    'transactionRules:updateTransactionRulesOrder',
+    api.transactionRules.updateTransactionRulesOrder,
     {
       userId: userId as Id<'users'>,
       updates: updates.map((u) => ({

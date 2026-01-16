@@ -24,6 +24,13 @@
     "build-storybook": "storybook build"
   },
   "lint-staged": {
+    "apps/web/**/*.{js,jsx,ts,tsx}": [
+      "prettier --write",
+      "eslint --fix --max-warnings=0"
+    ],
+    "packages/**/*.{js,jsx,ts,tsx}": [
+      "prettier --write"
+    ],
     "*.{js,jsx,ts,tsx}": [
       "prettier --write"
     ],
@@ -39,6 +46,7 @@
     "@storybook/nextjs": "^7.0.0",
     "@storybook/react": "^7.0.0",
     "@storybook/testing-library": "^0.0.14-next.2",
+    "eslint": "^8.57.1",
     "husky": "^8.0.0",
     "lint-staged": "^15.0.0",
     "prettier": "^3.0.0",

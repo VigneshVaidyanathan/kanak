@@ -7,6 +7,8 @@ const nextConfig = {
     '@kanak/components',
     '@kanak/shared',
     '@kanak/utils',
+    '@kanak/convex',
+    '@kanak/api',
   ],
   images: {
     formats: ['image/webp', 'image/avif'],
@@ -15,6 +17,16 @@ const nextConfig = {
     removeConsole: process.env.NODE_ENV === 'production',
   },
   poweredByHeader: false,
+  webpack: (config, { isServer }) => {
+    // Ensure proper resolution of Convex generated files
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+      };
+    }
+    return config;
+  },
 };
 
 module.exports = nextConfig;

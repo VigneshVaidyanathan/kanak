@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { mutation, query } from './_generated/server';
+import { mutation, query } from './_generated/server.js';
 
 export const findUserByEmail = query({
   args: { email: v.string() },
@@ -9,6 +9,14 @@ export const findUserByEmail = query({
       .withIndex('by_email', (q) => q.eq('email', args.email))
       .first();
     return user;
+  },
+});
+
+export const countUsers = query({
+  args: {},
+  handler: async (ctx) => {
+    const users = await ctx.db.query('users').collect();
+    return users.length;
   },
 });
 

@@ -1,3 +1,5 @@
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import crypto from 'crypto';
 import { getConvexClient } from './db';
 
@@ -17,8 +19,8 @@ export async function generateToken(payload: AuthPayload): Promise<string> {
   const token = generateSecureToken();
   const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
 
-  await (convex.mutation as any)('auth:createSession', {
-    userId: payload.userId as any,
+  await convex.mutation(api.auth.createSession, {
+    userId: payload.userId as Id<'users'>,
     token,
     expiresAt,
   });
@@ -28,7 +30,9 @@ export async function generateToken(payload: AuthPayload): Promise<string> {
 
 export async function verifyToken(token: string): Promise<AuthPayload> {
   const convex = await getConvexClient();
-  const result = await convex.query('auth:getSessionByToken', { token });
+  const result = await convex.query(api.auth.getSessionByToken, {
+    token,
+  });
 
   if (!result || !result.user) {
     throw new Error('Invalid or expired token');

@@ -5,7 +5,6 @@ import { z } from 'zod';
 
 const envSchema = z.object({
   CONVEX_URL: z.string().min(1, 'CONVEX_URL is required'),
-  CONVEX_AUTH_KEY: z.string().min(1, 'CONVEX_AUTH_KEY is required'),
 });
 
 type Env = z.infer<typeof envSchema>;
@@ -17,10 +16,32 @@ export async function getEnv(): Promise<Env> {
     return env;
   }
 
-  const parsed = envSchema.safeParse({
+  const envValues = {
     CONVEX_URL: process.env.CONVEX_URL,
-    CONVEX_AUTH_KEY: process.env.CONVEX_AUTH_KEY,
+  };
+
+  // Debug: Log what we found (without exposing secrets)
+  console.log('🔍 Environment variable check:', {
+    CONVEX_URL: envValues.CONVEX_URL
+      ? `✓ Found (length: ${envValues.CONVEX_URL.length})`
+      : '✗ Missing',
   });
+
+  // Check for common typos
+  const allEnvKeys = Object.keys(process.env);
+  const convexUrlVariants = allEnvKeys.filter(
+    (key) =>
+      key.toUpperCase().includes('CONVEX') && key.toUpperCase().includes('URL')
+  );
+  if (convexUrlVariants.length > 0 && !envValues.CONVEX_URL) {
+    console.warn(
+      '⚠️  Found similar environment variable names:',
+      convexUrlVariants.join(', '),
+      '- Did you mean CONVEX_URL?'
+    );
+  }
+
+  const parsed = envSchema.safeParse(envValues);
 
   if (!parsed.success) {
     console.error(
@@ -39,9 +60,4 @@ export async function getEnv(): Promise<Env> {
 export async function getConvexUrl(): Promise<string> {
   const env = await getEnv();
   return env.CONVEX_URL;
-}
-
-export async function getConvexAuthKey(): Promise<string> {
-  const env = await getEnv();
-  return env.CONVEX_AUTH_KEY;
 }

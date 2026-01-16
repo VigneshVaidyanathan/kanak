@@ -7,8 +7,8 @@
     "moduleResolution": "node",
     "baseUrl": ".",
     "paths": {
-      "@kanak/convex": ["../convex/src"],
-      "@kanak/convex/_generated": ["../convex/src/_generated"]
+      "@kanak/convex/*": ["../convex/src/*"],
+      "@kanak/convex/_generated/*": ["../convex/src/_generated/*"]
     }
   },
   "include": ["src/**/*"],

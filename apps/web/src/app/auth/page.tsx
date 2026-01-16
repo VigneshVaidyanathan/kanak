@@ -42,6 +42,24 @@ export default function AuthPage() {
         return;
       }
 
+      // Check if any users exist in the system
+      try {
+        const response = await fetch('/api/setup/check', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        const data = await response.json();
+        if (!data.hasUsers) {
+          router.push('/setup');
+          return;
+        }
+      } catch (error) {
+        console.error('Error checking users:', error);
+        // Continue to login page if check fails
+      }
+
       setCheckingAuth(false);
     };
 

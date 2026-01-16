@@ -1,6 +1,7 @@
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import { CreateCategoryInput, UpdateCategoryInput } from '@kanak/shared';
 import { getConvexClient } from './db';
-import type { Id } from 'convex/server';
 
 // Helper to convert Convex category to API format
 function convertCategoryFromConvex(category: any): any {
@@ -25,7 +26,7 @@ export async function getCategoriesByUserId(
   activeOnly: boolean = true
 ): Promise<any[]> {
   const convex = await getConvexClient();
-  const categories = await convex.query('categories:getCategoriesByUserId', {
+  const categories = await convex.query(api.categories.getCategoriesByUserId, {
     userId: userId as Id<'users'>,
     activeOnly,
   });
@@ -37,7 +38,7 @@ export async function getCategoryById(
   userId: string
 ): Promise<any> {
   const convex = await getConvexClient();
-  const category = await convex.query('categories:getCategoryById', {
+  const category = await convex.query(api.categories.getCategoryById, {
     id: id as Id<'categories'>,
     userId: userId as Id<'users'>,
   });
@@ -49,7 +50,7 @@ export async function createCategory(
   input: CreateCategoryInput
 ): Promise<any> {
   const convex = await getConvexClient();
-  const category = await convex.mutation('categories:createCategory', {
+  const category = await convex.mutation(api.categories.createCategory, {
     userId: userId as Id<'users'>,
     title: input.title,
     color: input.color,
@@ -57,7 +58,7 @@ export async function createCategory(
     description: input.description,
     type: input.type,
     priority: input.priority,
-    active: input.active,
+    active: true,
   });
   return convertCategoryFromConvex(category);
 }
@@ -68,7 +69,7 @@ export async function updateCategory(
   input: UpdateCategoryInput
 ): Promise<any> {
   const convex = await getConvexClient();
-  const category = await convex.mutation('categories:updateCategory', {
+  const category = await convex.mutation(api.categories.updateCategory, {
     id: id as Id<'categories'>,
     userId: userId as Id<'users'>,
     title: input.title,
@@ -77,7 +78,6 @@ export async function updateCategory(
     description: input.description,
     type: input.type,
     priority: input.priority,
-    active: input.active,
   });
   return convertCategoryFromConvex(category);
 }
@@ -87,9 +87,9 @@ export async function deactivateCategory(
   userId: string
 ): Promise<any> {
   const convex = await getConvexClient();
-  const category = await convex.mutation('categories:deactivateCategory', {
+  const category = await convex.mutation(api.categories.deactivateCategory, {
     id: id as Id<'categories'>,
     userId: userId as Id<'users'>,
-  });
+  } as { id: Id<'categories'>; userId: Id<'users'> });
   return convertCategoryFromConvex(category);
 }

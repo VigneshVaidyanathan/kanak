@@ -1,6 +1,7 @@
 import { CreateTransactionInput, UpdateTransactionInput } from '@kanak/shared';
 import { getConvexClient } from './db';
-import { Id } from 'convex/values';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 
 // Helper to convert Date to timestamp
 function dateToTimestamp(date: Date): number {
@@ -36,7 +37,7 @@ function convertTransactionFromConvex(transaction: any): any {
 export async function getTransactionsByUserId(userId: string): Promise<any[]> {
   const convex = await getConvexClient();
   const transactions = await convex.query(
-    'transactions:getTransactionsByUserId',
+    api.transactions.getTransactionsByUserId,
     {
       userId: userId as Id<'users'>,
     }
@@ -49,10 +50,13 @@ export async function getTransactionsByIds(
   userId: string
 ): Promise<any[]> {
   const convex = await getConvexClient();
-  const transactions = await convex.query('transactions:getTransactionsByIds', {
-    ids: ids as Id<'transactions'>[],
-    userId: userId as Id<'users'>,
-  });
+  const transactions = await convex.query(
+    api.transactions.getTransactionsByIds,
+    {
+      ids: ids as Id<'transactions'>[],
+      userId: userId as Id<'users'>,
+    }
+  );
   return transactions
     .map(convertTransactionFromConvex)
     .filter((t) => t !== null);
@@ -63,21 +67,24 @@ export async function createTransaction(
   input: CreateTransactionInput
 ): Promise<any> {
   const convex = await getConvexClient();
-  const transaction = await convex.mutation('transactions:createTransaction', {
-    userId: userId as Id<'users'>,
-    date: dateToTimestamp(input.date),
-    accountingDate: input.accountingDate
-      ? dateToTimestamp(input.accountingDate)
-      : undefined,
-    description: input.description,
-    amount: input.amount,
-    type: input.type,
-    bankAccount: input.bankAccount,
-    reason: input.reason,
-    category: input.category,
-    notes: input.notes,
-    isInternal: input.isInternal,
-  });
+  const transaction = await convex.mutation(
+    api.transactions.createTransaction,
+    {
+      userId: userId as Id<'users'>,
+      date: dateToTimestamp(input.date),
+      accountingDate: input.accountingDate
+        ? dateToTimestamp(input.accountingDate)
+        : undefined,
+      description: input.description,
+      amount: input.amount,
+      type: input.type,
+      bankAccount: input.bankAccount,
+      reason: input.reason,
+      category: input.category,
+      notes: input.notes,
+      isInternal: input.isInternal,
+    }
+  );
   return convertTransactionFromConvex(transaction);
 }
 
@@ -98,7 +105,7 @@ export async function findDuplicateTransaction(
 ): Promise<any> {
   const convex = await getConvexClient();
   const transaction = await convex.query(
-    'transactions:findDuplicateTransaction',
+    api.transactions.findDuplicateTransaction,
     {
       userId: userId as Id<'users'>,
       date: dateToTimestamp(date),
@@ -144,22 +151,25 @@ export async function updateTransaction(
   input: UpdateTransactionInput
 ): Promise<any> {
   const convex = await getConvexClient();
-  const transaction = await convex.mutation('transactions:updateTransaction', {
-    id: id as Id<'transactions'>,
-    userId: userId as Id<'users'>,
-    date: input.date ? dateToTimestamp(input.date) : undefined,
-    accountingDate: input.accountingDate
-      ? dateToTimestamp(input.accountingDate)
-      : undefined,
-    description: input.description,
-    amount: input.amount,
-    type: input.type,
-    bankAccount: input.bankAccount,
-    reason: input.reason,
-    category: input.category,
-    notes: input.notes,
-    isInternal: input.isInternal,
-  });
+  const transaction = await convex.mutation(
+    api.transactions.updateTransaction,
+    {
+      id: id as Id<'transactions'>,
+      userId: userId as Id<'users'>,
+      date: input.date ? dateToTimestamp(input.date) : undefined,
+      accountingDate: input.accountingDate
+        ? dateToTimestamp(input.accountingDate)
+        : undefined,
+      description: input.description,
+      amount: input.amount,
+      type: input.type,
+      bankAccount: input.bankAccount,
+      reason: input.reason,
+      category: input.category,
+      notes: input.notes,
+      isInternal: input.isInternal,
+    }
+  );
   return convertTransactionFromConvex(transaction);
 }
 
@@ -168,7 +178,7 @@ export async function deleteTransaction(
   userId: string
 ): Promise<any> {
   const convex = await getConvexClient();
-  await convex.mutation('transactions:deleteTransaction', {
+  await convex.mutation(api.transactions.deleteTransaction, {
     id: id as Id<'transactions'>,
     userId: userId as Id<'users'>,
   });
@@ -180,7 +190,7 @@ export async function deleteTransactions(
   userId: string
 ): Promise<any> {
   const convex = await getConvexClient();
-  await convex.mutation('transactions:deleteTransactions', {
+  await convex.mutation(api.transactions.deleteTransactions, {
     ids: ids as Id<'transactions'>[],
     userId: userId as Id<'users'>,
   });

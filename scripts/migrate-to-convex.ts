@@ -9,7 +9,6 @@
  * Prerequisites:
  *   - DATABASE_URL environment variable set (Neon connection)
  *   - CONVEX_URL environment variable set
- *   - CONVEX_AUTH_KEY environment variable set
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -446,16 +445,12 @@ async function main() {
   if (!process.env.CONVEX_URL) {
     throw new Error('CONVEX_URL environment variable is required');
   }
-  if (!process.env.CONVEX_AUTH_KEY) {
-    throw new Error('CONVEX_AUTH_KEY environment variable is required');
-  }
 
   // Initialize Prisma client
   const prisma = new PrismaClient();
 
   // Initialize Convex client
   const convex = new ConvexHttpClient(process.env.CONVEX_URL);
-  convex.setAuth(process.env.CONVEX_AUTH_KEY);
 
   try {
     // Migrate in order (respecting foreign key relationships)

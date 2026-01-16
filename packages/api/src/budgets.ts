@@ -1,6 +1,7 @@
 import { CreateBudgetInput } from '@kanak/shared';
-import type { Id } from 'convex/server';
 import { getConvexClient } from './db';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 
 // Helper to convert Convex budget to API format
 function convertBudgetFromConvex(budget: any): any {
@@ -25,7 +26,7 @@ export async function getBudgetsByUserId(
   month?: number
 ): Promise<any[]> {
   const convex = await getConvexClient();
-  const budgets = await (convex.query as any)('budgets:getBudgetsByUserId', {
+  const budgets = await convex.query(api.budgets.getBudgetsByUserId, {
     userId: userId as Id<'users'>,
     year,
     month,
@@ -40,7 +41,7 @@ export async function getBudgetByCategory(
   month: number
 ): Promise<any> {
   const convex = await getConvexClient();
-  const budget = await (convex.query as any)('budgets:getBudgetByCategory', {
+  const budget = await convex.query(api.budgets.getBudgetByCategory, {
     userId: userId as Id<'users'>,
     categoryId,
     year,
@@ -54,23 +55,20 @@ export async function createOrUpdateBudget(
   input: CreateBudgetInput
 ): Promise<any> {
   const convex = await getConvexClient();
-  const budget = await (convex.mutation as any)(
-    'budgets:createOrUpdateBudget',
-    {
-      userId: userId as Id<'users'>,
-      categoryId: input.categoryId,
-      month: input.month,
-      year: input.year,
-      amount: input.amount,
-      note: input.note,
-    }
-  );
+  const budget = await convex.mutation(api.budgets.createOrUpdateBudget, {
+    userId: userId as Id<'users'>,
+    categoryId: input.categoryId,
+    month: input.month,
+    year: input.year,
+    amount: input.amount,
+    note: input.note,
+  });
   return convertBudgetFromConvex(budget);
 }
 
 export async function deleteBudget(id: string, userId: string): Promise<any> {
   const convex = await getConvexClient();
-  await (convex.mutation as any)('budgets:deleteBudget', {
+  await convex.mutation(api.budgets.deleteBudget, {
     id: id as Id<'budgets'>,
     userId: userId as Id<'users'>,
   });
