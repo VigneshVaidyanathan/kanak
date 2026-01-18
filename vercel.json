@@ -1,5 +1,5 @@
 {
-  "buildCommand": "turbo run build --filter=@kanak/web",
+  "buildCommand": "cd packages/convex && npx convex deploy && cd ../.. && turbo run build --filter=@kanak/web",
   "installCommand": "npm install",
   "framework": "nextjs",
   "rootDirectory": "apps/web",

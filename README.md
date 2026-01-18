@@ -80,23 +80,52 @@ kanak/
 
 ## Deployment
 
-### One-Click Deploy to Vercel
+### One-Click Deploy to Vercel with Convex
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR_USERNAME/kanak)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR_USERNAME/kanak&env=CONVEX_DEPLOY_KEY)
 
 > **Note**: Replace `YOUR_USERNAME` in the deploy button URL with your GitHub username or organization name.
+
+**Quick Setup Steps:**
+
+1. **Click the Deploy button** above
+2. **Add Convex Integration**:
+   - In the Vercel deployment page, click "Add Integration" or "Browse Marketplace"
+   - Search for "Convex" and install the Convex integration
+   - This will automatically create a Convex project and link it to your Vercel deployment
+3. **Get Your Convex Deploy Key**:
+   - After installing Convex, go to your [Convex Dashboard](https://dashboard.convex.dev)
+   - Navigate to Settings → Deploy Keys
+   - Copy your Production Deploy Key
+   - Paste it into the `CONVEX_DEPLOY_KEY` environment variable in Vercel
+4. **Deploy**: Click "Deploy" and Vercel will automatically:
+   - Deploy your Convex backend (functions and schema)
+   - Set the `CONVEX_URL` environment variable automatically
+   - Build and deploy your Next.js frontend
+
+The Convex integration will automatically configure the `CONVEX_URL` environment variable, so you don't need to set it manually!
+
+**How It Works:**
+
+- The build process automatically runs `npx convex deploy` before building your Next.js app
+- This deploys your Convex functions and schema from `packages/convex`
+- The `CONVEX_URL` is automatically set as an environment variable during the build
+- Your frontend code can then access Convex using this URL
 
 ### Prerequisites
 
 Before deploying, you'll need:
 
-1. **A PostgreSQL database** - Choose one of the following options:
-   - [Vercel Postgres](https://vercel.com/docs/storage/vercel-postgres) (recommended for easiest integration)
-   - [Neon](https://neon.tech) (serverless PostgreSQL)
-   - [Supabase](https://supabase.com) (PostgreSQL with additional features)
-   - External PostgreSQL (self-hosted or other providers)
+1. **Convex Backend** - Automatically set up via Vercel Marketplace integration (recommended)
+   - The Convex integration creates a new Convex project
+   - Automatically configures `CONVEX_URL` environment variable
+   - Handles backend deployment during build
 
-2. **Environment variables** (see below)
+2. **Convex Deploy Key** (Required for build)
+   - Get from [Convex Dashboard](https://dashboard.convex.dev) → Settings → Deploy Keys
+   - Add as `CONVEX_DEPLOY_KEY` environment variable in Vercel
+   - Use Production key for production deployments
+   - Use Preview key for preview deployments (branches/PRs)
 
 ### Step-by-Step Deployment
 
@@ -107,16 +136,26 @@ Before deploying, you'll need:
    - Select the `kanak` repository
    - Vercel will auto-detect Next.js and Turborepo settings
 
-3. **Configure environment variables**:
+3. **Add Convex Integration** (if not done via deploy button):
+   - Go to Project Settings → Integrations
+   - Click "Browse Marketplace" and search for "Convex"
+   - Install the Convex integration
+   - This automatically creates a Convex project and sets up `CONVEX_URL`
+
+4. **Configure environment variables**:
    - Go to Project Settings → Environment Variables
    - Add the following variables:
 
-   | Variable       | Description                                                   | Example                                                     |
-   | -------------- | ------------------------------------------------------------- | ----------------------------------------------------------- |
-   | `DATABASE_URL` | PostgreSQL connection string                                  | `postgresql://user:password@host:5432/dbname?schema=public` |
-   | `JWT_SECRET`   | Secret key for JWT token signing (use a strong random string) | Generate with: `openssl rand -base64 32`                    |
+   | Variable            | Description                                                   | Example                                                     | Required |
+   | ------------------- | ------------------------------------------------------------- | ----------------------------------------------------------- | -------- |
+   | `CONVEX_DEPLOY_KEY` | Convex deploy key from dashboard                              | Get from [Convex Dashboard](https://dashboard.convex.dev)   | Yes      |
+   | `CONVEX_URL`        | Convex deployment URL (auto-set by integration)               | `https://xxx.convex.cloud`                                  | Auto     |
+   | `DATABASE_URL`      | PostgreSQL connection string                                  | `postgresql://user:password@host:5432/dbname?schema=public` | No       |
+   | `JWT_SECRET`        | Secret key for JWT token signing (use a strong random string) | Generate with: `openssl rand -base64 32`                    | No       |
 
-4. **Set up your database**:
+   > **Note**: `CONVEX_URL` is automatically set by the Convex integration. You only need to provide `CONVEX_DEPLOY_KEY`.
+
+5. **Set up your database** (Optional - only if using PostgreSQL):
 
    **Option A: Vercel Postgres** (Recommended)
    - In Vercel dashboard, go to Storage → Create Database → Postgres
@@ -138,12 +177,16 @@ Before deploying, you'll need:
    - Format: `postgresql://user:password@host:5432/dbname?schema=public`
    - Ensure the database is accessible from Vercel's IP ranges
 
-5. **Deploy**:
+6. **Deploy**:
    - Click "Deploy" in Vercel
+   - The build process will automatically:
+     - Deploy your Convex backend (using `CONVEX_DEPLOY_KEY`)
+     - Set the `CONVEX_URL` environment variable
+     - Build and deploy your Next.js frontend
    - Wait for the build to complete
    - Your app will be live at `https://your-project.vercel.app`
 
-6. **Run database migrations**:
+7. **Run database migrations** (Only if using PostgreSQL):
    After the first deployment, run migrations to set up your database schema:
 
    ```bash
@@ -160,7 +203,7 @@ Before deploying, you'll need:
    "build": "prisma generate && prisma migrate deploy && next build"
    ```
 
-7. **Create your admin user**:
+8. **Create your admin user**:
    Once deployed, create your first admin user via the API:
 
    ```bash
@@ -173,7 +216,7 @@ Before deploying, you'll need:
      }'
    ```
 
-8. **Access your app**:
+9. **Access your app**:
    - Navigate to `https://your-project.vercel.app/auth`
    - Login with the admin credentials you created
 
@@ -181,12 +224,25 @@ Before deploying, you'll need:
 
 The following environment variables are required for deployment:
 
-- **`DATABASE_URL`** (Required)
+- **`CONVEX_DEPLOY_KEY`** (Required)
+  - Deploy key from your Convex project
+  - Get from [Convex Dashboard](https://dashboard.convex.dev) → Settings → Deploy Keys
+  - Use Production key for production deployments
+  - Use Preview key for preview deployments (branches/PRs)
+  - **Never commit this to version control**
+
+- **`CONVEX_URL`** (Auto-configured)
+  - Automatically set by the Convex Vercel integration
+  - Format: `https://[deployment-name].convex.cloud`
+  - You don't need to set this manually when using the integration
+
+- **`DATABASE_URL`** (Optional - only if using PostgreSQL)
   - PostgreSQL connection string
   - Format: `postgresql://[user]:[password]@[host]:[port]/[database]?schema=public`
   - Must be accessible from Vercel's servers
+  - Note: This app primarily uses Convex, PostgreSQL is optional
 
-- **`JWT_SECRET`** (Required)
+- **`JWT_SECRET`** (Optional - only if using JWT auth)
   - Secret key for signing JWT authentication tokens
   - Should be a strong, random string (at least 32 characters)
   - Generate with: `openssl rand -base64 32` or use a password generator
@@ -233,6 +289,47 @@ The following environment variables are required for deployment:
 - [ ] Can access `/auth` page
 - [ ] Can login with admin credentials
 - [ ] Database connection working (check Vercel logs)
+
+## Self-Update System
+
+The application includes a built-in update checker that helps users who have forked the repository stay up-to-date with the upstream version.
+
+### How It Works
+
+1. **Version Checking**: The app periodically checks the upstream repository's `version.json` file (from the main branch) and compares it with your local version.
+
+2. **Update Banner**: When a newer version is available, a banner appears at the top of the application showing:
+   - Current version vs. latest version
+   - Changelog (if available)
+   - "Update Now" button that opens GitHub's compare interface
+
+3. **GitHub Compare Link**: The "Update Now" button generates a GitHub compare URL that pre-fills a pull request with all changes from the upstream repository, making it easy to merge updates.
+
+### Setup for Vercel Deployments
+
+To enable the update checker on Vercel, you need to:
+
+1. **Enable System Environment Variables**:
+   - Go to your Vercel project settings
+   - Navigate to **Settings** → **Environment Variables**
+   - Enable **"Automatically expose System Environment Variables"**
+   - This provides `NEXT_PUBLIC_VERCEL_GIT_REPO_OWNER` and `NEXT_PUBLIC_VERCEL_GIT_REPO_SLUG` automatically
+
+2. **Configure Upstream Repository** (Optional):
+   - If your upstream repository is different from the default (`vignesh/voka`), set these environment variables:
+     - `NEXT_PUBLIC_UPSTREAM_OWNER` - GitHub username of the upstream repository owner
+     - `NEXT_PUBLIC_UPSTREAM_REPO` - Name of the upstream repository
+
+### How the Update Process Works
+
+1. When an update is detected, click **"Update Now"** in the banner
+2. This opens GitHub's compare page showing all changes between your fork and the upstream
+3. Review the changes and create a pull request to merge them into your repository
+4. Once merged, your deployment will automatically update on the next build
+
+### Local Development
+
+The update checker works in local development as well, but the "Update Now" button requires the Vercel system environment variables to construct the GitHub compare URL. If these are not available, the banner will still show update information, but the button will be hidden.
 
 ## Features
 

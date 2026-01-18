@@ -1,6 +1,7 @@
 'use client';
 
 import { AuthGuard } from '@/components/auth-guard';
+import { UpdateBanner } from '@/components/update-banner';
 import { Navbar09 } from '@/components/ui/shadcn-io/navbar-09';
 import { useAuthStore } from '@/store/auth-store';
 import { DeviceProvider, Toaster } from '@kanak/ui';
@@ -52,6 +53,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         messageIndicator={false}
       />
       <div className="flex-1 p-5 pb-24 bg-gray-50 flex flex-col container mx-auto">
+        <UpdateBanner />
         {children}
       </div>
       <Toaster position="top-right" />
