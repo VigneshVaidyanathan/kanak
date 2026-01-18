@@ -55,6 +55,8 @@ export interface DataTableProps<TData, TArgs extends any[]> {
   pagination?: boolean;
   initialPagination?: PaginationState;
   onPaginationChange?: (pagination: PaginationState) => void;
+  initialColumnFilters?: TanStackColumnFilter[];
+  onColumnFiltersChange?: (filters: TanStackColumnFilter[]) => void;
   enableRowSelection?: boolean;
   onSelectionChange?: (selectedRows: TData[]) => void;
   onFilteredRowsChange?: (filteredRows: TData[]) => void;
@@ -82,6 +84,8 @@ export function DataTable<TData, TArgs extends any[]>({
   pagination = true,
   initialPagination,
   onPaginationChange,
+  initialColumnFilters,
+  onColumnFiltersChange,
   enableRowSelection = false,
   onSelectionChange,
   onFilteredRowsChange,
@@ -95,7 +99,7 @@ export function DataTable<TData, TArgs extends any[]>({
   const [data, setData] = useState(initialData ?? []);
   const [globalSearch, setGlobalSearch] = useState('');
   const [columnFilters, setColumnFilters] = useState<TanStackColumnFilter[]>(
-    []
+    initialColumnFilters ?? []
   );
   const [sorting, setSorting] = useState<SortingState>([]);
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
@@ -123,6 +127,17 @@ export function DataTable<TData, TArgs extends any[]>({
       setPaginationState(initialPagination);
     }
   }, [initialPagination, paginationState.pageIndex, paginationState.pageSize]);
+
+  // Sync column filters when initialColumnFilters changes (only if different)
+  useEffect(() => {
+    if (initialColumnFilters) {
+      const currentFiltersStr = JSON.stringify(columnFilters);
+      const initialFiltersStr = JSON.stringify(initialColumnFilters);
+      if (currentFiltersStr !== initialFiltersStr) {
+        setColumnFilters(initialColumnFilters);
+      }
+    }
+  }, [initialColumnFilters]);
 
   // Transform filters and sorting for server-side mode
   const serverParams = useMemo(() => {
@@ -305,7 +320,12 @@ export function DataTable<TData, TArgs extends any[]>({
     enableGlobalFilter: true,
     onGlobalFilterChange: setGlobalSearch,
     globalFilterFn: 'includesString',
-    onColumnFiltersChange: setColumnFilters,
+    onColumnFiltersChange: (updater) => {
+      const newFilters =
+        typeof updater === 'function' ? updater(columnFilters) : updater;
+      setColumnFilters(newFilters);
+      onColumnFiltersChange?.(newFilters);
+    },
     onSortingChange: setSorting,
     onPaginationChange: (updater) => {
       setPaginationState((prev) => {

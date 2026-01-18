@@ -18,6 +18,24 @@ export default function SetupPage(): JSX.Element {
   // Check if users already exist on mount
   useEffect(() => {
     const checkSetup = async (): Promise<void> => {
+      // First check if there's a JWT in localStorage
+      if (typeof window !== 'undefined') {
+        const storedToken = localStorage.getItem('auth-storage');
+        if (storedToken) {
+          try {
+            const parsed = JSON.parse(storedToken);
+            if (parsed.state?.token) {
+              // JWT exists in localStorage, redirect to auth
+              router.replace('/auth');
+              return;
+            }
+          } catch (e) {
+            // Invalid stored data, continue to check setup
+          }
+        }
+      }
+
+      // No JWT found, proceed with setup check
       try {
         const response = await fetch('/api/setup/check', {
           method: 'POST',

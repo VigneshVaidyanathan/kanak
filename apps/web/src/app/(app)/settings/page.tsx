@@ -2,7 +2,8 @@
 
 import { CategoriesSection } from '@/components/categories';
 import { TransactionRulesSection } from '@/components/transactions/rules/transaction-rules-section';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@kanak/ui';
+import { NotReadyForMobile } from '@kanak/components';
+import { Tabs, TabsContent, TabsList, TabsTrigger, useDevice } from '@kanak/ui';
 import {
   IconBuildingBank,
   IconCategory,
@@ -13,6 +14,7 @@ import { useEffect, useState } from 'react';
 import { BankAccountsSection } from './bank-accounts-section';
 
 export default function SettingsPage() {
+  const { isDesktop } = useDevice();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState('categories');
@@ -33,6 +35,10 @@ export default function SettingsPage() {
     setActiveTab(value);
     router.push(`/settings?tab=${value}`);
   };
+
+  if (!isDesktop) {
+    return <NotReadyForMobile />;
+  }
 
   return (
     <div className="flex-1">

@@ -91,12 +91,39 @@ export function DataTableFilterDateRange<TData>({
   // Track if this column has an active filter in the table state
   const columnFiltersState = table.getState().columnFilters;
 
-  // Sync local state when table filter is cleared externally (e.g., via resetColumnFilters)
+  // Sync local state when table filter changes externally (e.g., via resetColumnFilters or URL params)
   useEffect(() => {
-    if (columnFiltersState.length === 0 && dateRange?.from && dateRange?.to) {
+    const currentColumnFilter = columnFiltersState.find(
+      (f) => f.id === columnId
+    );
+    if (currentColumnFilter && typeof currentColumnFilter.value === 'object') {
+      // Filter was set externally (e.g., from URL), sync local state
+      const filterValue = currentColumnFilter.value as {
+        from?: Date;
+        to?: Date;
+      };
+      if (filterValue.from && filterValue.to) {
+        const filterFrom = new Date(filterValue.from);
+        const filterTo = new Date(filterValue.to);
+        const currentFrom = dateRange?.from
+          ? new Date(dateRange.from)
+          : undefined;
+        const currentTo = dateRange?.to ? new Date(dateRange.to) : undefined;
+
+        if (
+          !currentFrom ||
+          !currentTo ||
+          filterFrom.getTime() !== currentFrom.getTime() ||
+          filterTo.getTime() !== currentTo.getTime()
+        ) {
+          setDateRange({ from: filterFrom, to: filterTo });
+        }
+      }
+    } else if (!currentColumnFilter && dateRange?.from && dateRange?.to) {
+      // Filter was cleared externally
       setDateRange(undefined);
     }
-  }, [columnFiltersState]);
+  }, [columnFiltersState, columnId]);
 
   const hasDateRange = dateRange?.from && dateRange?.to;
 

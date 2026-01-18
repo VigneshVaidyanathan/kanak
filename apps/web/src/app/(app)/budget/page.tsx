@@ -11,7 +11,7 @@ import { MonthNavigation } from '@/components/budget/month-navigation';
 import { ProgressCell } from '@/components/budget/progress-cell';
 import { useAuthStore } from '@/store/auth-store';
 import { useTransactionsStore } from '@/store/transactions-store';
-import { Icon } from '@kanak/components';
+import { Icon, NotReadyForMobile } from '@kanak/components';
 import { Budget, Category, Transaction } from '@kanak/shared';
 import {
   Badge,
@@ -23,6 +23,7 @@ import {
   Input,
   Skeleton,
   Spinner,
+  useDevice,
 } from '@kanak/ui';
 import {
   IconCalculator,
@@ -85,6 +86,7 @@ interface BudgetRow {
 }
 
 export default function BudgetPage() {
+  const { isDesktop } = useDevice();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAuthenticated, token, clearAuth } = useAuthStore();
@@ -627,6 +629,10 @@ export default function BudgetPage() {
         </div>
       </div>
     );
+  }
+
+  if (!isDesktop) {
+    return <NotReadyForMobile />;
   }
 
   return (

@@ -3,12 +3,14 @@
 import { useAuthStore } from '@/store/auth-store';
 import { loginSchema } from '@kanak/shared';
 import { Button, Input, Label, Spinner } from '@kanak/ui';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 export default function AuthPage() {
   const router = useRouter();
-  const { setAuth, token, isAuthenticated, initializeAuth } = useAuthStore();
+  const searchParams = useSearchParams();
+  const { setAuth, token, isAuthenticated, initializeAuth, validateToken } =
+    useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -17,18 +19,40 @@ export default function AuthPage() {
 
   // Check if user is already authenticated on mount
   useEffect(() => {
-    const checkAuth = async () => {
+    const checkAuth = async (): Promise<void> => {
       await initializeAuth();
 
-      // Check localStorage directly as well
+      // Get redirect URL from query parameters
+      const redirectUrl = searchParams.get('redirect') || '/dashboard';
+
+      // Check localStorage directly for JWT
       if (typeof window !== 'undefined') {
         const storedToken = localStorage.getItem('auth-storage');
         if (storedToken) {
           try {
             const parsed = JSON.parse(storedToken);
             if (parsed.state?.token && parsed.state?.user) {
-              router.push('/dashboard');
-              return;
+              // JWT exists in localStorage, ensure store is updated
+              const storeState = useAuthStore.getState();
+              if (
+                !storeState.token ||
+                storeState.token !== parsed.state.token
+              ) {
+                // Update store with token from localStorage
+                storeState.setAuth(parsed.state.user, parsed.state.token);
+              }
+
+              // Validate token
+              const isValid = await validateToken();
+              if (isValid) {
+                // Valid JWT, redirect to dashboard or redirect parameter
+                router.push(redirectUrl);
+                return;
+              } else {
+                // Invalid token, clear it and continue to login
+                const { clearAuth } = useAuthStore.getState();
+                clearAuth();
+              }
             }
           } catch (e) {
             // Invalid stored data, continue to login
@@ -36,10 +60,18 @@ export default function AuthPage() {
         }
       }
 
-      // Also check zustand store state
-      if (token && isAuthenticated) {
-        router.push('/dashboard');
-        return;
+      // Also check zustand store state (after initializeAuth should have loaded it)
+      if (token) {
+        // Validate token before redirecting
+        const isValid = await validateToken();
+        if (isValid) {
+          router.push(redirectUrl);
+          return;
+        } else {
+          // Invalid token, clear it
+          const { clearAuth } = useAuthStore.getState();
+          clearAuth();
+        }
       }
 
       // Check if any users exist in the system
@@ -64,7 +96,14 @@ export default function AuthPage() {
     };
 
     checkAuth();
-  }, [router, token, isAuthenticated, initializeAuth]);
+  }, [
+    router,
+    token,
+    isAuthenticated,
+    initializeAuth,
+    validateToken,
+    searchParams,
+  ]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,10 +127,13 @@ export default function AuthPage() {
         throw new Error(data.error || 'Login failed');
       }
 
+      // Get redirect URL from query parameters
+      const redirectUrl = searchParams.get('redirect') || '/dashboard';
+
       // Set auth state (this persists to localStorage)
       // Set auth state with callback to ensure localStorage is updated before redirect
       setAuth(data.user, data.token, () => {
-        router.push('/dashboard');
+        router.push(redirectUrl);
       });
     } catch (err: any) {
       setError(err.message || 'An error occurred during login');

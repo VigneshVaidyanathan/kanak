@@ -11,11 +11,13 @@ interface User {
 interface AuthState {
   user: User | null;
   token: string | null;
+  tokenExpiresAt: number | null;
   isAuthenticated: boolean;
   setAuth: (user: User, token: string, callback?: () => void) => void;
   clearAuth: () => void;
   initializeAuth: () => Promise<void>;
   validateToken: () => Promise<boolean>;
+  isTokenExpired: () => boolean;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -23,9 +25,12 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       user: null,
       token: null,
+      tokenExpiresAt: null,
       isAuthenticated: false,
       setAuth: (user, token, callback) => {
-        set({ user, token, isAuthenticated: true });
+        // Tokens expire in 7 days (matching server-side expiration)
+        const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
+        set({ user, token, tokenExpiresAt: expiresAt, isAuthenticated: true });
 
         // Wait for zustand persist middleware to complete
         if (callback) {
@@ -35,10 +40,22 @@ export const useAuthStore = create<AuthState>()(
         }
       },
       clearAuth: () => {
-        set({ user: null, token: null, isAuthenticated: false });
+        set({
+          user: null,
+          token: null,
+          tokenExpiresAt: null,
+          isAuthenticated: false,
+        });
         if (typeof window !== 'undefined') {
           localStorage.removeItem('auth-storage');
         }
+      },
+      isTokenExpired: (): boolean => {
+        const state = get();
+        if (!state.tokenExpiresAt) {
+          return true; // No expiration info means we should verify
+        }
+        return Date.now() >= state.tokenExpiresAt;
       },
       initializeAuth: async () => {
         // This will be called on mount to check localStorage
@@ -54,13 +71,20 @@ export const useAuthStore = create<AuthState>()(
           }
         }
       },
-      validateToken: async () => {
+      validateToken: async (): Promise<boolean> => {
         const state = get();
 
         if (!state.token) {
           return false;
         }
 
+        // Check if token is expired before making API call
+        if (!state.isTokenExpired()) {
+          // Token is not expired, assume it's valid
+          return true;
+        }
+
+        // Token is expired or we don't have expiration info, verify with server
         try {
           // Verify token via API route (not directly calling server actions)
           const response = await fetch('/api/auth/verify', {
@@ -77,7 +101,15 @@ export const useAuthStore = create<AuthState>()(
           }
 
           const data = await response.json();
-          return data.valid === true;
+
+          if (data.valid === true) {
+            // Token is valid, update expiration (7 days from now)
+            const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
+            set({ tokenExpiresAt: expiresAt });
+            return true;
+          }
+
+          return false;
         } catch (error: any) {
           // Token is invalid or expired
           return false;

@@ -7,6 +7,7 @@ import { WealthDatePickerModal } from '@/components/wealth/wealth-date-picker-mo
 import { WealthLineItemModal } from '@/components/wealth/wealth-line-item-modal';
 import { WealthSectionModal } from '@/components/wealth/wealth-section-modal';
 import { useAuthStore } from '@/store/auth-store';
+import { NotReadyForMobile } from '@kanak/components';
 import {
   Button,
   DropdownMenu,
@@ -18,6 +19,7 @@ import {
   HoverCardContent,
   HoverCardTrigger,
   Spinner,
+  useDevice,
 } from '@kanak/ui';
 import {
   IconChevronDown,
@@ -73,6 +75,7 @@ interface WealthData {
 }
 
 export default function WealthPage() {
+  const { isDesktop } = useDevice();
   const router = useRouter();
   const { isAuthenticated, token } = useAuthStore();
   const [loading, setLoading] = useState(true);
@@ -872,6 +875,10 @@ export default function WealthPage() {
         </div>
       </div>
     );
+  }
+
+  if (!isDesktop) {
+    return <NotReadyForMobile />;
   }
 
   return (

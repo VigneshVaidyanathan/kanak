@@ -1,10 +1,9 @@
 'use client';
 
-import { AppDock } from '@/components/app-dock';
 import { AuthGuard } from '@/components/auth-guard';
 import { Navbar09 } from '@/components/ui/shadcn-io/navbar-09';
 import { useAuthStore } from '@/store/auth-store';
-import { Toaster } from '@kanak/ui';
+import { DeviceProvider, Toaster } from '@kanak/ui';
 import {
   IconFileText,
   IconLayoutDashboard,
@@ -55,7 +54,6 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
       <div className="flex-1 p-5 pb-24 bg-gray-50 flex flex-col container mx-auto">
         {children}
       </div>
-      <AppDock />
       <Toaster position="top-right" />
     </div>
   );
@@ -63,8 +61,10 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <AuthGuard>
-      <AppLayoutContent>{children}</AppLayoutContent>
-    </AuthGuard>
+    <DeviceProvider>
+      <AuthGuard>
+        <AppLayoutContent>{children}</AppLayoutContent>
+      </AuthGuard>
+    </DeviceProvider>
   );
 }

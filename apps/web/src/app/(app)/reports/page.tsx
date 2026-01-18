@@ -5,6 +5,7 @@ import { TotalWealthAreaChart } from '@/components/reports/total-wealth-area-cha
 import { TotalWealthChart } from '@/components/reports/total-wealth-chart';
 import { TotalWealthStat } from '@/components/reports/total-wealth-stat';
 import { useAuthStore } from '@/store/auth-store';
+import { NotReadyForMobile } from '@kanak/components';
 import {
   Button,
   DropdownMenu,
@@ -12,6 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   Spinner,
+  useDevice,
 } from '@kanak/ui';
 import { IconChevronDown } from '@tabler/icons-react';
 import { useRouter } from 'next/navigation';
@@ -55,6 +57,7 @@ interface WealthData {
 }
 
 export default function ReportsPage() {
+  const { isDesktop } = useDevice();
   const router = useRouter();
   const { isAuthenticated, token } = useAuthStore();
   const [loading, setLoading] = useState(true);
@@ -313,6 +316,10 @@ export default function ReportsPage() {
         </div>
       </div>
     );
+  }
+
+  if (!isDesktop) {
+    return <NotReadyForMobile />;
   }
 
   return (

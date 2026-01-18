@@ -77,16 +77,30 @@ export function DataTableCombobox<TData>({
   // Track if this column has an active filter in the table state
   const columnFiltersState = table.getState().columnFilters;
 
-  // Sync local state when table filter is cleared externally (e.g., via resetColumnFilters)
+  // Sync local state when table filter changes externally (e.g., via resetColumnFilters or URL params)
   useEffect(() => {
     const currentColumnFilter = columnFiltersState.find(
       (f) => f.id === columnId
     );
-    if (!currentColumnFilter && hasSelectionMade) {
-      setSelValues([]);
-      setHasSelectionMade(false);
+    if (currentColumnFilter && Array.isArray(currentColumnFilter.value)) {
+      // Filter was set externally (e.g., from URL), sync local state
+      const filterValues = currentColumnFilter.value as string[];
+      // Only update if values are different to avoid unnecessary re-renders
+      const currentValuesSorted = [...selValues].sort().join(',');
+      const filterValuesSorted = [...filterValues].sort().join(',');
+      if (currentValuesSorted !== filterValuesSorted) {
+        setSelValues(filterValues);
+        setHasSelectionMade(filterValues.length > 0);
+      }
+    } else if (!currentColumnFilter) {
+      // Filter was cleared externally
+      if (selValues.length > 0 || hasSelectionMade) {
+        setSelValues([]);
+        setHasSelectionMade(false);
+      }
     }
-  }, [columnFiltersState]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columnFiltersState, columnId]);
 
   return (
     <>

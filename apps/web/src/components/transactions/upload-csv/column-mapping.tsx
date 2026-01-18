@@ -101,7 +101,7 @@ export const ColumnMapping = ({
   } = useCsvUploadStore();
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [loadingBankAccounts, setLoadingBankAccounts] = useState(true);
-  const [activeTab, setActiveTab] = useState<'manual' | 'template'>('manual');
+  const [activeTab, setActiveTab] = useState<'manual' | 'template'>('template');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const dateFormatOptions: { value: DateFormat; label: string }[] = [
@@ -162,6 +162,32 @@ export const ColumnMapping = ({
         (cm) => cm.property.value === 'depositAmount'
       );
 
+      let needsUpdate = false;
+      const updatedMapping = columnMapping.map((cm) => {
+        if (
+          cm.property.value === 'withdrawalAmount' &&
+          !cm.property.isRequired
+        ) {
+          needsUpdate = true;
+          return {
+            ...cm,
+            property: { ...cm.property, isRequired: true },
+          };
+        }
+        if (cm.property.value === 'depositAmount' && !cm.property.isRequired) {
+          needsUpdate = true;
+          return {
+            ...cm,
+            property: { ...cm.property, isRequired: true },
+          };
+        }
+        return cm;
+      });
+
+      if (needsUpdate) {
+        setColumnMapping(updatedMapping);
+      }
+
       if (!hasWithdrawalMapping || !hasDepositMapping) {
         const newMappings: CsvColumnMapping[] = [];
         if (!hasWithdrawalMapping) {
@@ -169,7 +195,7 @@ export const ColumnMapping = ({
             property: {
               label: 'Withdrawal Amount',
               value: 'withdrawalAmount',
-              isRequired: false,
+              isRequired: true,
             },
           });
         }
@@ -178,12 +204,12 @@ export const ColumnMapping = ({
             property: {
               label: 'Deposit Amount',
               value: 'depositAmount',
-              isRequired: false,
+              isRequired: true,
             },
           });
         }
         if (newMappings.length > 0) {
-          setColumnMapping([...columnMapping, ...newMappings]);
+          setColumnMapping([...updatedMapping, ...newMappings]);
         }
       }
     }
@@ -208,8 +234,14 @@ export const ColumnMapping = ({
         return s.property.isRequired && s.headerIndex === undefined;
       });
     } else {
-      // Template mode: check date, bankAccount, description, and at least one of withdrawal/deposit
-      const requiredFields = ['date', 'bankAccount', 'description'];
+      // Template mode: check date, bankAccount, description, and both withdrawal/deposit
+      const requiredFields = [
+        'date',
+        'bankAccount',
+        'description',
+        'withdrawalAmount',
+        'depositAmount',
+      ];
       const hasRequiredFields = !columnMapping.some((s: CsvColumnMapping) => {
         if (!requiredFields.includes(s.property.value)) return false;
         if (s.property.value === 'bankAccount') {
@@ -218,21 +250,7 @@ export const ColumnMapping = ({
         return s.property.isRequired && s.headerIndex === undefined;
       });
 
-      const withdrawalMapping = columnMapping.find(
-        (cm) => cm.property.value === 'withdrawalAmount'
-      );
-      const depositMapping = columnMapping.find(
-        (cm) => cm.property.value === 'depositAmount'
-      );
-
-      const hasWithdrawal =
-        withdrawalMapping?.headerIndex !== undefined &&
-        withdrawalMapping?.header !== undefined;
-      const hasDeposit =
-        depositMapping?.headerIndex !== undefined &&
-        depositMapping?.header !== undefined;
-
-      return hasRequiredFields && (hasWithdrawal || hasDeposit);
+      return hasRequiredFields;
     }
   }, [columnMapping, activeTab]);
 
@@ -446,29 +464,6 @@ export const ColumnMapping = ({
         )}
         {fileContent && (
           <>
-            <div className="mb-4">
-              <Label className="text-sm font-medium mb-2 block">
-                Date Format
-              </Label>
-              <Select
-                value={dateFormat}
-                onValueChange={(value) => setDateFormat(value as DateFormat)}
-              >
-                <SelectTrigger className="w-full max-w-md">
-                  <SelectValue placeholder="Select date format" />
-                </SelectTrigger>
-                <SelectContent>
-                  {dateFormatOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground mt-1">
-                Select the date format used in your CSV file
-              </p>
-            </div>
             <Tabs
               value={activeTab}
               onValueChange={(value) => {
@@ -476,12 +471,12 @@ export const ColumnMapping = ({
                 setErrorMessage(null);
               }}
             >
-              <TabsList className="grid w-full grid-cols-2 mb-4">
+              <TabsList className="hidden mb-4">
                 <TabsTrigger value="manual">Manual</TabsTrigger>
                 <TabsTrigger value="template">Template</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="manual">
+              <TabsContent value="manual" className="hidden">
                 <ManualMappingForm
                   fileContent={fileContent}
                   columnMapping={columnMapping}
@@ -500,6 +495,9 @@ export const ColumnMapping = ({
                   loadingBankAccounts={loadingBankAccounts}
                   onMappingChange={handleMappingChange}
                   onBankAccountChange={handleBankAccountChange}
+                  dateFormat={dateFormat}
+                  setDateFormat={setDateFormat}
+                  dateFormatOptions={dateFormatOptions}
                 />
               </TabsContent>
             </Tabs>

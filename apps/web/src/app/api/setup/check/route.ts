@@ -1,9 +1,19 @@
 import { countUsers } from '@kanak/api';
 import { NextRequest, NextResponse } from 'next/server';
+import { getTokenFromRequest } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  // Reject requests that have a JWT token
+  const token = getTokenFromRequest(request);
+  if (token) {
+    return NextResponse.json(
+      { error: 'This endpoint cannot be called when authenticated' },
+      { status: 403 }
+    );
+  }
+
   try {
     const userCount = await countUsers();
     return NextResponse.json({ hasUsers: userCount > 0 });

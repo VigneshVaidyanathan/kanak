@@ -14,7 +14,11 @@ import {
 import { UploadCsvModal } from '@/components/transactions/upload-csv';
 import { useAuthStore } from '@/store/auth-store';
 import { useTransactionsStore } from '@/store/transactions-store';
-import { DataTable, DataTableColumnHeader } from '@kanak/components';
+import {
+  DataTable,
+  DataTableColumnHeader,
+  NotReadyForMobile,
+} from '@kanak/components';
 import {
   BankAccount,
   Category,
@@ -39,6 +43,7 @@ import {
   SelectTrigger,
   SelectValue,
   Spinner,
+  useDevice,
 } from '@kanak/ui';
 import {
   IconArrowLeft,
@@ -54,12 +59,17 @@ import {
   IconTrash,
   IconUpload,
 } from '@tabler/icons-react';
-import { ColumnDef, PaginationState } from '@tanstack/react-table';
+import {
+  ColumnDef,
+  PaginationState,
+  ColumnFilter as TanStackColumnFilter,
+} from '@tanstack/react-table';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 export default function TransactionsPage() {
+  const { isDesktop } = useDevice();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAuthenticated, token, clearAuth } = useAuthStore();
@@ -92,13 +102,6 @@ export default function TransactionsPage() {
   const [selectedTransactionForEdit, setSelectedTransactionForEdit] =
     useState<Transaction | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [reportsFilter, setReportsFilter] = useState<{
-    including: boolean;
-    excluding: boolean;
-  }>({
-    including: true, // Default: only show included reports
-    excluding: false,
-  });
 
   // Initialize view type from URL (default: table)
   const viewType = useMemo<'table' | 'month'>(() => {
@@ -145,6 +148,143 @@ export default function TransactionsPage() {
       pageSize,
     };
   }, [searchParams, viewType]);
+
+  // Initialize column filters from URL
+  const initialColumnFilters = useMemo<TanStackColumnFilter[]>(() => {
+    const filters: TanStackColumnFilter[] = [];
+
+    // Parse type filter
+    const typeFilter = searchParams.get('filter_type');
+    if (typeFilter) {
+      const values = typeFilter.split(',').filter(Boolean);
+      if (values.length > 0) {
+        filters.push({ id: 'type', value: values });
+      }
+    }
+
+    // Parse reports filter
+    const reportsFilter = searchParams.get('filter_reports');
+    if (reportsFilter) {
+      const values = reportsFilter.split(',').filter(Boolean);
+      if (values.length > 0) {
+        filters.push({ id: 'reports', value: values });
+      }
+    }
+
+    // Parse category filter
+    const categoryFilter = searchParams.get('filter_category');
+    if (categoryFilter) {
+      const values = categoryFilter.split(',').filter(Boolean);
+      if (values.length > 0) {
+        filters.push({ id: 'category', value: values });
+      }
+    }
+
+    // Parse bank account filter
+    const bankAccountFilter = searchParams.get('filter_bankAccount');
+    if (bankAccountFilter) {
+      const values = bankAccountFilter.split(',').filter(Boolean);
+      if (values.length > 0) {
+        filters.push({ id: 'bankAccount', value: values });
+      }
+    }
+
+    // Parse date range filter
+    const dateFrom = searchParams.get('filter_date_from');
+    const dateTo = searchParams.get('filter_date_to');
+    if (dateFrom && dateTo) {
+      filters.push({
+        id: 'date',
+        value: {
+          from: new Date(dateFrom),
+          to: new Date(dateTo),
+        },
+      });
+    }
+
+    // Parse amount range filter
+    const amountMin = searchParams.get('filter_amount_min');
+    const amountMax = searchParams.get('filter_amount_max');
+    if (amountMin || amountMax) {
+      filters.push({
+        id: 'amount',
+        value: {
+          min: amountMin ? parseFloat(amountMin) : undefined,
+          max: amountMax ? parseFloat(amountMax) : undefined,
+        },
+      });
+    }
+
+    return filters;
+  }, [searchParams]);
+
+  // Handle column filters changes and update URL
+  const handleColumnFiltersChange = useCallback(
+    (filters: TanStackColumnFilter[]) => {
+      const params = new URLSearchParams(searchParams.toString());
+
+      // Remove all existing filter params
+      const filterKeys = [
+        'filter_type',
+        'filter_reports',
+        'filter_category',
+        'filter_bankAccount',
+        'filter_date_from',
+        'filter_date_to',
+        'filter_amount_min',
+        'filter_amount_max',
+      ];
+      filterKeys.forEach((key) => params.delete(key));
+
+      // Add new filter params
+      filters.forEach((filter) => {
+        if (filter.id === 'type' && Array.isArray(filter.value)) {
+          const values = (filter.value as string[]).join(',');
+          if (values) params.set('filter_type', values);
+        } else if (filter.id === 'reports' && Array.isArray(filter.value)) {
+          const values = (filter.value as string[]).join(',');
+          if (values) params.set('filter_reports', values);
+        } else if (filter.id === 'category' && Array.isArray(filter.value)) {
+          const values = (filter.value as string[]).join(',');
+          if (values) params.set('filter_category', values);
+        } else if (filter.id === 'bankAccount' && Array.isArray(filter.value)) {
+          const values = (filter.value as string[]).join(',');
+          if (values) params.set('filter_bankAccount', values);
+        } else if (filter.id === 'date' && typeof filter.value === 'object') {
+          const dateRange = filter.value as { from?: Date; to?: Date };
+          if (dateRange.from) {
+            params.set(
+              'filter_date_from',
+              dateRange.from.toISOString().split('T')[0]
+            );
+          }
+          if (dateRange.to) {
+            params.set(
+              'filter_date_to',
+              dateRange.to.toISOString().split('T')[0]
+            );
+          }
+        } else if (filter.id === 'amount' && typeof filter.value === 'object') {
+          const amountRange = filter.value as {
+            min?: number;
+            max?: number;
+          };
+          if (amountRange.min !== undefined) {
+            params.set('filter_amount_min', String(amountRange.min));
+          }
+          if (amountRange.max !== undefined) {
+            params.set('filter_amount_max', String(amountRange.max));
+          }
+        }
+      });
+
+      const newUrl = params.toString()
+        ? `/transactions?${params.toString()}`
+        : '/transactions';
+      router.push(newUrl, { scroll: false });
+    },
+    [router, searchParams]
+  );
 
   // Handle pagination changes and update URL
   const handlePaginationChange = useCallback(
@@ -340,7 +480,7 @@ export default function TransactionsPage() {
     }
   }, [token]);
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async () => {
     try {
       const response = await fetch('/api/transactions', {
         headers: {
@@ -361,7 +501,7 @@ export default function TransactionsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token, clearAuth, router, setTransactions, setLoading]);
 
   const handleDeleteTransaction = useCallback((transaction: Transaction) => {
     // TODO: Implement delete functionality
@@ -378,7 +518,7 @@ export default function TransactionsPage() {
   const handleDeleteSuccess = useCallback(() => {
     setSelectedTransactions([]);
     fetchTransactions();
-  }, []);
+  }, [fetchTransactions]);
 
   const handleEditTransaction = useCallback((transaction: Transaction) => {
     setSelectedTransactionForEdit(transaction);
@@ -389,7 +529,7 @@ export default function TransactionsPage() {
     fetchTransactions();
     setEditModalOpen(false);
     setSelectedTransactionForEdit(null);
-  }, []);
+  }, [fetchTransactions]);
 
   // Extract unique options for filters
   const categoryOptions = useMemo(() => {
@@ -414,6 +554,15 @@ export default function TransactionsPage() {
     () => [
       { label: 'Credit', value: 'credit' },
       { label: 'Debit', value: 'debit' },
+    ],
+    []
+  );
+
+  const reportOptions = useMemo(
+    () => [
+      { label: 'All', value: 'all' },
+      { label: 'Including reports', value: 'including' },
+      { label: 'Excluding reports', value: 'excluding' },
     ],
     []
   );
@@ -477,7 +626,7 @@ export default function TransactionsPage() {
     [handleEditTransaction, handleDeleteTransaction, handleApplyRulesToFiltered]
   );
 
-  // Filter transactions by year and reports inclusion
+  // Filter transactions by year
   const filteredTransactionsByYear = useMemo(() => {
     let filtered = transactions;
 
@@ -492,31 +641,8 @@ export default function TransactionsPage() {
       });
     }
 
-    // Filter by reports inclusion/exclusion
-    if (!reportsFilter.including && !reportsFilter.excluding) {
-      // If both are unchecked, show nothing
-      return [];
-    }
-
-    if (reportsFilter.including && reportsFilter.excluding) {
-      // If both are checked, show all
-      return filtered;
-    }
-
-    // Filter based on isInternal
-    return filtered.filter((t: Transaction) => {
-      const isExcluded = t.isInternal === true;
-      if (reportsFilter.including && !reportsFilter.excluding) {
-        // Only including: show transactions where isInternal is false or undefined
-        return !isExcluded;
-      }
-      if (reportsFilter.excluding && !reportsFilter.including) {
-        // Only excluding: show transactions where isInternal is true
-        return isExcluded;
-      }
-      return true;
-    });
-  }, [transactions, selectedYear, reportsFilter]);
+    return filtered;
+  }, [transactions, selectedYear]);
 
   // Group transactions by month for month view using accountingDate
   const transactionsByMonth = useMemo(() => {
@@ -744,6 +870,53 @@ export default function TransactionsPage() {
     []
   );
 
+  // Custom filter function for reports column
+  const reportsFilterFn = useCallback(
+    (row: any, columnId: string, filterValue: any) => {
+      if (
+        !filterValue ||
+        !Array.isArray(filterValue) ||
+        filterValue.length === 0
+      ) {
+        return true;
+      }
+
+      const isInternal = row.original.isInternal === true;
+
+      // If "all" is selected, show everything
+      if (filterValue.includes('all')) {
+        return true;
+      }
+
+      // If both "including" and "excluding" are selected, show everything
+      if (
+        filterValue.includes('including') &&
+        filterValue.includes('excluding')
+      ) {
+        return true;
+      }
+
+      // If only "including" is selected, show transactions where isInternal is false or undefined
+      if (
+        filterValue.includes('including') &&
+        !filterValue.includes('excluding')
+      ) {
+        return !isInternal;
+      }
+
+      // If only "excluding" is selected, show transactions where isInternal is true
+      if (
+        filterValue.includes('excluding') &&
+        !filterValue.includes('including')
+      ) {
+        return isInternal;
+      }
+
+      return true;
+    },
+    []
+  );
+
   const columns = useMemo<ColumnDef<Transaction>[]>(
     () => [
       {
@@ -866,8 +1039,8 @@ export default function TransactionsPage() {
             text: 'Amount',
             placeholder: 'Select range...',
             min: 0,
-            max: 10000,
-            step: 10,
+            max: 100000,
+            step: 100,
             transform: (value: number) => (
               <div className="flex items-center">
                 <IconCurrencyRupee size={14} />
@@ -1058,8 +1231,16 @@ export default function TransactionsPage() {
       {
         accessorKey: 'omit',
         enableHiding: true,
+        enableColumnFilter: true,
+        filterFn: reportsFilterFn,
         meta: {
           header: 'Include',
+          filter: {
+            type: 'COMBOBOX',
+            options: reportOptions,
+            text: 'Reports',
+            placeholder: 'Filter by reports...',
+          },
         },
         size: 60,
         minSize: 60,
@@ -1134,6 +1315,7 @@ export default function TransactionsPage() {
     [
       categoryOptions,
       typeOptions,
+      reportOptions,
       bankAccountOptions,
       transactionActions,
       categories,
@@ -1143,6 +1325,7 @@ export default function TransactionsPage() {
       updateTransactionForMonthView,
       viewType,
       categoryFilterFn,
+      reportsFilterFn,
     ]
   );
 
@@ -1154,6 +1337,10 @@ export default function TransactionsPage() {
         </div>
       </div>
     );
+  }
+
+  if (!isDesktop) {
+    return <NotReadyForMobile />;
   }
 
   return (
@@ -1191,34 +1378,6 @@ export default function TransactionsPage() {
               })}
             </SelectContent>
           </Select>
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-md border bg-background">
-            <div className="flex items-center gap-4 text-sm">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <Checkbox
-                  checked={reportsFilter.including}
-                  onCheckedChange={(checked) => {
-                    setReportsFilter((prev) => ({
-                      ...prev,
-                      including: checked === true,
-                    }));
-                  }}
-                />
-                <span>Including reports</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <Checkbox
-                  checked={reportsFilter.excluding}
-                  onCheckedChange={(checked) => {
-                    setReportsFilter((prev) => ({
-                      ...prev,
-                      excluding: checked === true,
-                    }));
-                  }}
-                />
-                <span>Excluding reports</span>
-              </label>
-            </div>
-          </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
@@ -1263,8 +1422,8 @@ export default function TransactionsPage() {
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
-                <DropdownMenuItem>Export as PDF</DropdownMenuItem>
-                <DropdownMenuItem>Export as Excel</DropdownMenuItem>
+                <DropdownMenuItem disabled>Export as PDF</DropdownMenuItem>
+                <DropdownMenuItem disabled>Export as Excel</DropdownMenuItem>
               </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1285,6 +1444,8 @@ export default function TransactionsPage() {
         onPaginationChange={
           viewType === 'month' ? undefined : handlePaginationChange
         }
+        initialColumnFilters={initialColumnFilters}
+        onColumnFiltersChange={handleColumnFiltersChange}
         showRefresh={false}
         enableRowSelection={true}
         onSelectionChange={setSelectedTransactions}

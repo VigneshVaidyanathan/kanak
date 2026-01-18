@@ -20,13 +20,6 @@ export async function getEnv(): Promise<Env> {
     CONVEX_URL: process.env.CONVEX_URL,
   };
 
-  // Debug: Log what we found (without exposing secrets)
-  console.log('🔍 Environment variable check:', {
-    CONVEX_URL: envValues.CONVEX_URL
-      ? `✓ Found (length: ${envValues.CONVEX_URL.length})`
-      : '✗ Missing',
-  });
-
   // Check for common typos
   const allEnvKeys = Object.keys(process.env);
   const convexUrlVariants = allEnvKeys.filter(
