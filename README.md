@@ -82,26 +82,35 @@ kanak/
 
 ### One-Click Deploy to Vercel with Convex
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR_USERNAME/kanak&env=CONVEX_DEPLOY_KEY)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/VigneshVaidyanathan/kanak&env=CONVEX_URL)
 
-> **Note**: Replace `YOUR_USERNAME` in the deploy button URL with your GitHub username or organization name.
+> **One-Click Deployment**: Simply click the deploy button above! Vercel will automatically clone this repository and set up your deployment. No manual configuration needed - just follow the steps below to add Convex integration and your deploy key.
+>
+> **Want your own copy?** If you'd like to fork this repository to your GitHub account first (recommended for customization), you can click "Use this template" on GitHub (if this repository is set as a template) or manually fork it, then use the deploy button from your fork.
 
-**Quick Setup Steps:**
+**Quick Setup Steps (One-Click Deployment):**
 
 1. **Click the Deploy button** above
+   - Vercel will automatically clone this repository
+   - You'll be prompted to connect your GitHub account (if not already connected)
+   - Vercel will create a new project for you
+
 2. **Add Convex Integration**:
    - In the Vercel deployment page, click "Add Integration" or "Browse Marketplace"
    - Search for "Convex" and install the Convex integration
    - This will automatically create a Convex project and link it to your Vercel deployment
+
 3. **Get Your Convex Deploy Key**:
    - After installing Convex, go to your [Convex Dashboard](https://dashboard.convex.dev)
    - Navigate to Settings → Deploy Keys
    - Copy your Production Deploy Key
    - Paste it into the `CONVEX_DEPLOY_KEY` environment variable in Vercel
+
 4. **Deploy**: Click "Deploy" and Vercel will automatically:
    - Deploy your Convex backend (functions and schema)
    - Set the `CONVEX_URL` environment variable automatically
    - Build and deploy your Next.js frontend
+   - Your app will be live in minutes!
 
 The Convex integration will automatically configure the `CONVEX_URL` environment variable, so you don't need to set it manually!
 
@@ -129,11 +138,20 @@ Before deploying, you'll need:
 
 ### Step-by-Step Deployment
 
-1. **Click the Deploy button** above or visit [Vercel](https://vercel.com/new)
+**Option 1: One-Click Deploy (Recommended for Non-Developers)**
+
+1. **Click the Deploy button** above
+   - Vercel automatically clones the repository
+   - No GitHub account setup needed if you're already logged in
+   - Proceed to step 2 below
+
+**Option 2: Manual Import**
+
+1. Visit [Vercel](https://vercel.com/new) and click "Import Git Repository"
 
 2. **Import your repository**:
-   - Connect your GitHub account
-   - Select the `kanak` repository
+   - Connect your GitHub account if not already connected
+   - Search for and select the `kanak` repository (or fork it first if you want your own copy)
    - Vercel will auto-detect Next.js and Turborepo settings
 
 3. **Add Convex Integration** (if not done via deploy button):
