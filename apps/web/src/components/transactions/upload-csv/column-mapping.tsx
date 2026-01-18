@@ -8,25 +8,9 @@ import {
   type FileContent,
 } from '@/store/csv-upload-store';
 import { BankAccount, Transaction } from '@kanak/shared';
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-  Button,
-  Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@kanak/ui';
+import { Alert, AlertDescription, AlertTitle, Button } from '@kanak/ui';
 import { IconArrowLeft, IconArrowRight } from '@tabler/icons-react';
 import { useEffect, useMemo, useState } from 'react';
-import { ManualMappingForm } from './manual-mapping-form';
 import { TemplateMappingForm } from './template-mapping-form';
 
 export type CsvTransactionMappingProperty = {
@@ -41,6 +25,18 @@ export const kanakTransactionProperties: CsvTransactionMappingProperty[] = [
     label: 'Transaction Date',
     value: 'date',
     description: 'The date on which the transaction was made.',
+    isRequired: true,
+  },
+  {
+    label: 'Withdrawal Amount',
+    value: 'withdrawalAmount',
+    description: 'The withdrawal amount. This will create Debit transactions.',
+    isRequired: true,
+  },
+  {
+    label: 'Deposit Amount',
+    value: 'depositAmount',
+    description: 'The deposit amount. This will create Credit transactions.',
     isRequired: true,
   },
   {
@@ -101,7 +97,6 @@ export const ColumnMapping = ({
   } = useCsvUploadStore();
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [loadingBankAccounts, setLoadingBankAccounts] = useState(true);
-  const [activeTab, setActiveTab] = useState<'manual' | 'template'>('template');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const dateFormatOptions: { value: DateFormat; label: string }[] = [
@@ -152,107 +147,25 @@ export const ColumnMapping = ({
     );
   }, [setColumnMapping]);
 
-  // Initialize template mode mappings if they don't exist
-  useEffect(() => {
-    if (activeTab === 'template') {
-      const hasWithdrawalMapping = columnMapping.some(
-        (cm) => cm.property.value === 'withdrawalAmount'
-      );
-      const hasDepositMapping = columnMapping.some(
-        (cm) => cm.property.value === 'depositAmount'
-      );
-
-      let needsUpdate = false;
-      const updatedMapping = columnMapping.map((cm) => {
-        if (
-          cm.property.value === 'withdrawalAmount' &&
-          !cm.property.isRequired
-        ) {
-          needsUpdate = true;
-          return {
-            ...cm,
-            property: { ...cm.property, isRequired: true },
-          };
-        }
-        if (cm.property.value === 'depositAmount' && !cm.property.isRequired) {
-          needsUpdate = true;
-          return {
-            ...cm,
-            property: { ...cm.property, isRequired: true },
-          };
-        }
-        return cm;
-      });
-
-      if (needsUpdate) {
-        setColumnMapping(updatedMapping);
-      }
-
-      if (!hasWithdrawalMapping || !hasDepositMapping) {
-        const newMappings: CsvColumnMapping[] = [];
-        if (!hasWithdrawalMapping) {
-          newMappings.push({
-            property: {
-              label: 'Withdrawal Amount',
-              value: 'withdrawalAmount',
-              isRequired: true,
-            },
-          });
-        }
-        if (!hasDepositMapping) {
-          newMappings.push({
-            property: {
-              label: 'Deposit Amount',
-              value: 'depositAmount',
-              isRequired: true,
-            },
-          });
-        }
-        if (newMappings.length > 0) {
-          setColumnMapping([...updatedMapping, ...newMappings]);
-        }
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
-
   const canComplete = useMemo(() => {
-    if (activeTab === 'manual') {
-      // Manual mode: check required fields (date, amount, type, bankAccount, description)
-      const requiredFields = [
-        'date',
-        'amount',
-        'type',
-        'bankAccount',
-        'description',
-      ];
-      return !columnMapping.some((s: CsvColumnMapping) => {
-        if (!requiredFields.includes(s.property.value)) return false;
-        if (s.property.value === 'bankAccount') {
-          return s.property.isRequired && !s.selectedBankAccountId;
-        }
-        return s.property.isRequired && s.headerIndex === undefined;
-      });
-    } else {
-      // Template mode: check date, bankAccount, description, and both withdrawal/deposit
-      const requiredFields = [
-        'date',
-        'bankAccount',
-        'description',
-        'withdrawalAmount',
-        'depositAmount',
-      ];
-      const hasRequiredFields = !columnMapping.some((s: CsvColumnMapping) => {
-        if (!requiredFields.includes(s.property.value)) return false;
-        if (s.property.value === 'bankAccount') {
-          return s.property.isRequired && !s.selectedBankAccountId;
-        }
-        return s.property.isRequired && s.headerIndex === undefined;
-      });
+    // Template mode: check date, bankAccount, description, and both withdrawal/deposit
+    const requiredFields = [
+      'date',
+      'bankAccount',
+      'description',
+      'withdrawalAmount',
+      'depositAmount',
+    ];
+    const hasRequiredFields = !columnMapping.some((s: CsvColumnMapping) => {
+      if (!requiredFields.includes(s.property.value)) return false;
+      if (s.property.value === 'bankAccount') {
+        return s.property.isRequired && !s.selectedBankAccountId;
+      }
+      return s.property.isRequired && s.headerIndex === undefined;
+    });
 
-      return hasRequiredFields;
-    }
-  }, [columnMapping, activeTab]);
+    return hasRequiredFields;
+  }, [columnMapping]);
 
   const mapTransactions = () => {
     if (!fileContent) return;
@@ -280,131 +193,72 @@ export const ColumnMapping = ({
     );
     const selectedBankAccountName = selectedBankAccount?.name;
 
-    if (activeTab === 'template') {
-      // Template mode: process withdrawal/deposit columns
-      const dateMapping = columnMapping.find(
-        (cm) => cm.property.value === 'date'
-      );
-      const withdrawalMapping = columnMapping.find(
-        (cm) => cm.property.value === 'withdrawalAmount'
-      );
-      const depositMapping = columnMapping.find(
-        (cm) => cm.property.value === 'depositAmount'
-      );
-      const descriptionMapping = columnMapping.find(
-        (cm) => cm.property.value === 'description'
-      );
+    // Template mode: process withdrawal/deposit columns
+    const dateMapping = columnMapping.find(
+      (cm) => cm.property.value === 'date'
+    );
+    const withdrawalMapping = columnMapping.find(
+      (cm) => cm.property.value === 'withdrawalAmount'
+    );
+    const depositMapping = columnMapping.find(
+      (cm) => cm.property.value === 'depositAmount'
+    );
+    const descriptionMapping = columnMapping.find(
+      (cm) => cm.property.value === 'description'
+    );
 
-      const transactions: Transaction[] = [];
+    const transactions: Transaction[] = [];
 
-      fileContent.rows.forEach((row: string[]) => {
-        const dateIndex = dateMapping?.headerIndex;
-        const withdrawalIndex = withdrawalMapping?.headerIndex;
-        const depositIndex = depositMapping?.headerIndex;
-        const descriptionIndex = descriptionMapping?.headerIndex;
+    fileContent.rows.forEach((row: string[]) => {
+      const dateIndex = dateMapping?.headerIndex;
+      const withdrawalIndex = withdrawalMapping?.headerIndex;
+      const depositIndex = depositMapping?.headerIndex;
+      const descriptionIndex = descriptionMapping?.headerIndex;
 
-        let trans: any = null;
+      let trans: any = null;
 
-        // Check withdrawal amount first - if it has a non-zero value, create debit transaction
-        if (withdrawalIndex !== undefined) {
-          const withdrawalValue = parseFloat(row[withdrawalIndex] || '0');
-          if (!isNaN(withdrawalValue) && withdrawalValue !== 0) {
-            const dateValue =
-              dateIndex !== undefined ? row[dateIndex] : undefined;
-            trans = {
-              date: dateValue,
-              accountingDate: dateValue,
-              amount: row[withdrawalIndex],
-              type: 'debit',
-              bankAccount: selectedBankAccountName,
-              description:
-                descriptionIndex !== undefined
-                  ? row[descriptionIndex]
-                  : undefined,
-            };
-          }
+      // Check withdrawal amount first - if it has a non-zero value, create debit transaction
+      if (withdrawalIndex !== undefined) {
+        const withdrawalValue = parseFloat(row[withdrawalIndex] || '0');
+        if (!isNaN(withdrawalValue) && withdrawalValue !== 0) {
+          const dateValue =
+            dateIndex !== undefined ? row[dateIndex] : undefined;
+          trans = {
+            date: dateValue,
+            accountingDate: dateValue,
+            amount: row[withdrawalIndex],
+            type: 'debit',
+            bankAccount: selectedBankAccountName,
+            description:
+              descriptionIndex !== undefined
+                ? row[descriptionIndex]
+                : undefined,
+          };
         }
-
-        // If no withdrawal transaction, check deposit amount - if it has a non-zero value, create credit transaction
-        if (!trans && depositIndex !== undefined) {
-          const depositValue = parseFloat(row[depositIndex] || '0');
-          if (!isNaN(depositValue) && depositValue !== 0) {
-            const dateValue =
-              dateIndex !== undefined ? row[dateIndex] : undefined;
-            trans = {
-              date: dateValue,
-              accountingDate: dateValue,
-              amount: row[depositIndex],
-              type: 'credit',
-              bankAccount: selectedBankAccountName,
-              description:
-                descriptionIndex !== undefined
-                  ? row[descriptionIndex]
-                  : undefined,
-            };
-          }
-        }
-
-        // Only add transaction if it was created and has all required fields
-        if (trans) {
-          if (
-            trans.bankAccount &&
-            trans.amount !== undefined &&
-            trans.amount !== null &&
-            trans.amount !== '' &&
-            trans.date &&
-            trans.date !== null &&
-            trans.date !== '' &&
-            trans.type &&
-            trans.description
-          ) {
-            transactions.push(trans);
-          }
-        }
-        // If neither withdrawal nor deposit has a value, skip this row (no transaction created)
-      });
-
-      if (transactions.length === 0) {
-        setErrorMessage(
-          'No valid transactions found. Please check your mapping.'
-        );
-        return;
       }
 
-      onComplete(transactions);
-    } else {
-      // Manual mode: use existing logic
-      const columnMappingMap: Record<string, number> = {};
-      columnMapping.forEach((s: CsvColumnMapping) => {
-        if (s.headerIndex !== undefined) {
-          columnMappingMap[s.property.value] = s.headerIndex;
+      // If no withdrawal transaction, check deposit amount - if it has a non-zero value, create credit transaction
+      if (!trans && depositIndex !== undefined) {
+        const depositValue = parseFloat(row[depositIndex] || '0');
+        if (!isNaN(depositValue) && depositValue !== 0) {
+          const dateValue =
+            dateIndex !== undefined ? row[dateIndex] : undefined;
+          trans = {
+            date: dateValue,
+            accountingDate: dateValue,
+            amount: row[depositIndex],
+            type: 'credit',
+            bankAccount: selectedBankAccountName,
+            description:
+              descriptionIndex !== undefined
+                ? row[descriptionIndex]
+                : undefined,
+          };
         }
-      });
+      }
 
-      const transactions: any[] = [];
-      fileContent.rows.forEach((row: string[]) => {
-        const dateValue =
-          columnMappingMap['date'] !== undefined
-            ? row[columnMappingMap['date']]
-            : undefined;
-        const trans: any = {
-          date: dateValue,
-          accountingDate: dateValue,
-          amount:
-            columnMappingMap['amount'] !== undefined
-              ? +row[columnMappingMap['amount']]
-              : undefined,
-          type:
-            columnMappingMap['type'] !== undefined
-              ? row[columnMappingMap['type']]
-              : undefined,
-          bankAccount: selectedBankAccountName,
-          description:
-            columnMappingMap['description'] !== undefined
-              ? row[columnMappingMap['description']]
-              : undefined,
-        };
-
+      // Only add transaction if it was created and has all required fields
+      if (trans) {
         if (
           trans.bankAccount &&
           trans.amount !== undefined &&
@@ -418,38 +272,57 @@ export const ColumnMapping = ({
         ) {
           transactions.push(trans);
         }
-      });
-
-      if (transactions.length === 0) {
-        setErrorMessage(
-          'No valid transactions found. Please check your mapping.'
-        );
-        return;
       }
+      // If neither withdrawal nor deposit has a value, skip this row (no transaction created)
+    });
 
-      onComplete(transactions);
+    if (transactions.length === 0) {
+      setErrorMessage(
+        'No valid transactions found. Please check your mapping.'
+      );
+      return;
     }
+
+    onComplete(transactions);
   };
 
   const handleMappingChange = (index: number, header: string | undefined) => {
+    if (index < 0 || index >= columnMapping.length) {
+      console.warn(`Invalid mapping index: ${index}`);
+      return;
+    }
+
     const newMapping = [...columnMapping];
     if (fileContent && header && header.trim() !== '') {
       const headerIndex = fileContent.headers.findIndex(
         (h: string) => h === header
       );
-      newMapping[index].header = header;
-      newMapping[index].headerIndex =
-        headerIndex >= 0 ? headerIndex : undefined;
+      newMapping[index] = {
+        ...newMapping[index],
+        header: header,
+        headerIndex: headerIndex >= 0 ? headerIndex : undefined,
+      };
     } else {
-      newMapping[index].header = undefined;
-      newMapping[index].headerIndex = undefined;
+      newMapping[index] = {
+        ...newMapping[index],
+        header: undefined,
+        headerIndex: undefined,
+      };
     }
     setColumnMapping(newMapping);
   };
 
   const handleBankAccountChange = (index: number, bankAccountId: string) => {
+    if (index < 0 || index >= columnMapping.length) {
+      console.warn(`Invalid mapping index: ${index}`);
+      return;
+    }
+
     const newMapping = [...columnMapping];
-    newMapping[index].selectedBankAccountId = bankAccountId;
+    newMapping[index] = {
+      ...newMapping[index],
+      selectedBankAccountId: bankAccountId,
+    };
     setColumnMapping(newMapping);
   };
 
@@ -463,45 +336,17 @@ export const ColumnMapping = ({
           </Alert>
         )}
         {fileContent && (
-          <>
-            <Tabs
-              value={activeTab}
-              onValueChange={(value) => {
-                setActiveTab(value as 'manual' | 'template');
-                setErrorMessage(null);
-              }}
-            >
-              <TabsList className="hidden mb-4">
-                <TabsTrigger value="manual">Manual</TabsTrigger>
-                <TabsTrigger value="template">Template</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="manual" className="hidden">
-                <ManualMappingForm
-                  fileContent={fileContent}
-                  columnMapping={columnMapping}
-                  bankAccounts={bankAccounts}
-                  loadingBankAccounts={loadingBankAccounts}
-                  onMappingChange={handleMappingChange}
-                  onBankAccountChange={handleBankAccountChange}
-                />
-              </TabsContent>
-
-              <TabsContent value="template">
-                <TemplateMappingForm
-                  fileContent={fileContent}
-                  columnMapping={columnMapping}
-                  bankAccounts={bankAccounts}
-                  loadingBankAccounts={loadingBankAccounts}
-                  onMappingChange={handleMappingChange}
-                  onBankAccountChange={handleBankAccountChange}
-                  dateFormat={dateFormat}
-                  setDateFormat={setDateFormat}
-                  dateFormatOptions={dateFormatOptions}
-                />
-              </TabsContent>
-            </Tabs>
-          </>
+          <TemplateMappingForm
+            fileContent={fileContent}
+            columnMapping={columnMapping}
+            bankAccounts={bankAccounts}
+            loadingBankAccounts={loadingBankAccounts}
+            onMappingChange={handleMappingChange}
+            onBankAccountChange={handleBankAccountChange}
+            dateFormat={dateFormat}
+            setDateFormat={setDateFormat}
+            dateFormatOptions={dateFormatOptions}
+          />
         )}
       </div>
       <div className="mt-10 flex justify-end gap-2">

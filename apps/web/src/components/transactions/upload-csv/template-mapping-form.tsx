@@ -1,14 +1,12 @@
 'use client';
 
 import {
-  useCsvUploadStore,
-  type FileContent,
   type CsvColumnMapping,
   type DateFormat,
+  type FileContent,
 } from '@/store/csv-upload-store';
 import { BankAccount } from '@kanak/shared';
 import {
-  Label,
   Select,
   SelectContent,
   SelectItem,
@@ -59,15 +57,6 @@ export function TemplateMappingForm({
 
   // Get mappings for template fields
   const getMapping = (key: string) => {
-    // For withdrawalAmount and depositAmount, we'll use a custom mapping
-    if (key === 'withdrawalAmount' || key === 'depositAmount') {
-      // Check if there's a custom mapping stored
-      const customMapping = columnMapping.find(
-        (cm) => cm.property.value === key
-      );
-      return customMapping;
-    }
-    // For other fields, find by property value
     return columnMapping.find((cm) => cm.property.value === key);
   };
 
@@ -83,10 +72,13 @@ export function TemplateMappingForm({
     if (mappingIndex === -1) {
       // This shouldn't happen if useEffect in parent component works correctly
       // But handle it gracefully
+      console.warn(`Mapping not found for key: ${key}`);
       return;
     }
 
-    onMappingChange(mappingIndex, header);
+    // Ensure we pass the header value, not undefined if it's an empty string
+    const headerValue = header && header.trim() !== '' ? header : undefined;
+    onMappingChange(mappingIndex, headerValue);
   };
 
   return (
@@ -136,12 +128,7 @@ export function TemplateMappingForm({
             );
 
             const propertyDescription = getPropertyDescription(field.key);
-            const descriptionText =
-              field.key === 'withdrawalAmount'
-                ? 'The withdrawal amount. This will create Debit transactions.'
-                : field.key === 'depositAmount'
-                  ? 'The deposit amount. This will create Credit transactions.'
-                  : propertyDescription;
+            const descriptionText = propertyDescription;
 
             return (
               <div
@@ -168,9 +155,9 @@ export function TemplateMappingForm({
                 <div className="flex-1">
                   {field.key === 'bankAccount' ? (
                     <Select
-                      value={mapping?.selectedBankAccountId || ''}
+                      value={mapping?.selectedBankAccountId ?? ''}
                       onValueChange={(value) => {
-                        if (mappingIndex !== -1) {
+                        if (mappingIndex !== -1 && value) {
                           onBankAccountChange(mappingIndex, value);
                         }
                       }}
@@ -193,10 +180,13 @@ export function TemplateMappingForm({
                   ) : (
                     <>
                       <Select
-                        value={mapping?.header || ''}
-                        onValueChange={(value) =>
-                          handleTemplateFieldChange(field.key, value)
-                        }
+                        value={mapping?.header ?? ''}
+                        onValueChange={(value) => {
+                          handleTemplateFieldChange(
+                            field.key,
+                            value || undefined
+                          );
+                        }}
                       >
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Choose mapping column from CSV" />

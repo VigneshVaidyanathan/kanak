@@ -80,7 +80,7 @@ export const UploadCsvModal = ({ onClose }: { onClose: () => void }) => {
   return (
     <Dialog open={true} onOpenChange={handleClose}>
       <DialogContent
-        className="sm:max-w-2xl lg:max-w-4xl max-h-[90vh] overflow-y-auto"
+        className="sm:max-w-2xl lg:max-w-4xl max-h-[90vh] overflow-y-auto [&>*]:overflow-visible"
         showCloseButton={false}
       >
         <DialogHeader>

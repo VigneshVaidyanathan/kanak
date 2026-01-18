@@ -78,11 +78,14 @@ export function ManualMappingForm({
                 <div className="flex-1">
                   {prop.value === 'bankAccount' ? (
                     <Select
-                      value={mapping.selectedBankAccountId || ''}
-                      onValueChange={(value) =>
-                        onBankAccountChange(originalIndex, value)
-                      }
+                      value={mapping.selectedBankAccountId ?? ''}
+                      onValueChange={(value) => {
+                        if (value) {
+                          onBankAccountChange(originalIndex, value);
+                        }
+                      }}
                       disabled={loadingBankAccounts}
+                      modal={false}
                     >
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select bank account" />
@@ -101,10 +104,11 @@ export function ManualMappingForm({
                   ) : (
                     <>
                       <Select
-                        value={mapping.header || ''}
-                        onValueChange={(value) =>
-                          onMappingChange(originalIndex, value)
-                        }
+                        value={mapping.header ?? ''}
+                        onValueChange={(value) => {
+                          onMappingChange(originalIndex, value || undefined);
+                        }}
+                        modal={false}
                       >
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Choose mapping column from CSV" />
