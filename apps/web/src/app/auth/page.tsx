@@ -4,9 +4,9 @@ import { useAuthStore } from '@/store/auth-store';
 import { loginSchema } from '@kanak/shared';
 import { Button, Input, Label, Spinner } from '@kanak/ui';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 
-export default function AuthPage() {
+function AuthPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { setAuth, token, isAuthenticated, initializeAuth, validateToken } =
@@ -204,5 +204,21 @@ export default function AuthPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+function AuthPageFallback(): React.ReactElement {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <Spinner />
+    </div>
+  );
+}
+
+export default function AuthPage(): React.ReactElement {
+  return (
+    <Suspense fallback={<AuthPageFallback />}>
+      <AuthPageContent />
+    </Suspense>
   );
 }
