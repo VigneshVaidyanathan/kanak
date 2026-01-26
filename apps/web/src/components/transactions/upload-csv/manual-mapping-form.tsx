@@ -107,7 +107,6 @@ export function ManualMappingForm({
                         onValueChange={(value) => {
                           onMappingChange(originalIndex, value || undefined);
                         }}
-                        modal={false}
                       >
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Choose mapping column from CSV" />
