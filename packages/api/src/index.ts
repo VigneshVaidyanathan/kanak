@@ -1,6 +1,7 @@
 export * from './db';
 export * from './users';
 export * from './transactions';
+export * from './transactionUploads';
 export * from './auth';
 export * from './categories';
 export * from './bank-accounts';

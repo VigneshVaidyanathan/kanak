@@ -33,7 +33,7 @@ export const VerifyTransactions = ({
   const [transactionsAdded, setTransactionsAdded] = useState(0);
   const { token } = useAuthStore();
   const { setTransactions } = useTransactionsStore();
-  const { dateFormat } = useCsvUploadStore();
+  const { dateFormat, fileName, fileSize } = useCsvUploadStore();
 
   const columns = useMemo<ColumnDef<SampleTransaction>[]>(
     () => [
@@ -209,9 +209,29 @@ export const VerifyTransactions = ({
       }
 
       const result = await response.json();
-      setTransactionsAdded(
-        result.created || result.total || transactions.length
-      );
+      const addedCount = result.created || result.total || transactions.length;
+      setTransactionsAdded(addedCount);
+
+      // Record the upload in the database
+      if (fileName && fileSize !== undefined) {
+        try {
+          await fetch('/api/transactions/upload/record', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              fileName,
+              fileSize,
+              totalRows: addedCount,
+            }),
+          });
+        } catch (error) {
+          // Don't block user flow if recording fails
+          console.error('Failed to record upload:', error);
+        }
+      }
 
       // Refresh transactions list
       const transactionsResponse = await fetch('/api/transactions', {

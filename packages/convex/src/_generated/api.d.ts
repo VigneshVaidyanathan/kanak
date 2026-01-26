@@ -14,6 +14,7 @@ import type * as budgets from '../budgets.js';
 import type * as categories from '../categories.js';
 import type * as index from '../index.js';
 import type * as transactionRules from '../transactionRules.js';
+import type * as transactionUploads from '../transactionUploads.js';
 import type * as transactions from '../transactions.js';
 import type * as users from '../users.js';
 import type * as wealth from '../wealth.js';
@@ -31,6 +32,7 @@ declare const fullApi: ApiFromModules<{
   categories: typeof categories;
   index: typeof index;
   transactionRules: typeof transactionRules;
+  transactionUploads: typeof transactionUploads;
   transactions: typeof transactions;
   users: typeof users;
   wealth: typeof wealth;

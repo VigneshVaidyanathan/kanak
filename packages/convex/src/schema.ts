@@ -144,4 +144,14 @@ export default defineSchema({
   })
     .index('by_token', ['token'])
     .index('by_userId', ['userId']),
+
+  transaction_uploads: defineTable({
+    userId: v.id('users'),
+    fileName: v.string(),
+    fileSize: v.number(),
+    totalRows: v.number(),
+    uploadedAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_userId', ['userId']),
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { type FileContent } from '@/store/csv-upload-store';
+import { type FileContent, useCsvUploadStore } from '@/store/csv-upload-store';
 import { Button } from '@kanak/ui';
 import { IconArrowRight } from '@tabler/icons-react';
 import { parse as parseCsv } from 'csv-parse/sync';
@@ -12,6 +12,7 @@ export const UploadFile = ({
 }: {
   onComplete: (fileContent?: FileContent) => void;
 }) => {
+  const { setFileName, setFileSize } = useCsvUploadStore();
   const [uploadFileStatus, setUploadFileStatus] = useState<
     'accepted' | 'rejected' | undefined
   >();
@@ -37,13 +38,16 @@ export const UploadFile = ({
           const content = reader.result as string;
           parseStringIntoTable(content);
 
+          const file = acceptedFiles[0];
           setUploadFileStatus('accepted');
-          setAcceptedFileName(acceptedFiles[0].name);
+          setAcceptedFileName(file.name);
+          setFileName(file.name);
+          setFileSize(file.size);
         };
         reader.readAsText(acceptedFiles[0]);
       }
     },
-    []
+    [setFileName, setFileSize]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({

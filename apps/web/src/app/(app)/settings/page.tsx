@@ -8,10 +8,12 @@ import {
   IconBuildingBank,
   IconCategory,
   IconFilter,
+  IconUpload,
 } from '@tabler/icons-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { BankAccountsSection } from './bank-accounts-section';
+import { TransactionUploadsSection } from '@/components/transactions/upload-csv/transaction-uploads-section';
 
 export default function SettingsPage() {
   const { isDesktop } = useDevice();
@@ -24,7 +26,12 @@ export default function SettingsPage() {
     const tabParam = searchParams.get('tab');
     if (
       tabParam &&
-      ['categories', 'bank-accounts', 'transaction-rules'].includes(tabParam)
+      [
+        'categories',
+        'bank-accounts',
+        'transaction-rules',
+        'transaction-uploads',
+      ].includes(tabParam)
     ) {
       setActiveTab(tabParam);
     }
@@ -84,6 +91,13 @@ export default function SettingsPage() {
                 <IconFilter className="shrink-0 size-4" />
                 Transaction Rules
               </TabsTrigger>
+              <TabsTrigger
+                value="transaction-uploads"
+                className="cursor-pointer w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm py-2"
+              >
+                <IconUpload className="shrink-0 size-4" />
+                Transaction uploads
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -97,6 +111,9 @@ export default function SettingsPage() {
             </TabsContent>
             <TabsContent value="transaction-rules" className="mt-0">
               <TransactionRulesSection />
+            </TabsContent>
+            <TabsContent value="transaction-uploads" className="mt-0">
+              <TransactionUploadsSection />
             </TabsContent>
           </div>
         </Tabs>
