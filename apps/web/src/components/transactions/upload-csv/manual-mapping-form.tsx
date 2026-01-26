@@ -85,7 +85,6 @@ export function ManualMappingForm({
                         }
                       }}
                       disabled={loadingBankAccounts}
-                      modal={false}
                     >
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select bank account" />
