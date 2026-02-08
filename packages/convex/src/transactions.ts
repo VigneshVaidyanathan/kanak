@@ -195,6 +195,6 @@ export const deleteTransactions = mutation({
     }
 
     await Promise.all(args.ids.map((id) => ctx.db.delete(id)));
-    return { success: true };
+    return { success: true as const, count: args.ids.length };
   },
 });

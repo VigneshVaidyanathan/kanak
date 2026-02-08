@@ -230,11 +230,11 @@ export async function deleteTransaction(
 export async function deleteTransactions(
   ids: string[],
   userId: string
-): Promise<{ success: true }> {
+): Promise<{ success: true; count: number }> {
   const convex = await getConvexClient();
-  await convex.mutation(api.transactions.deleteTransactions, {
+  const result = await convex.mutation(api.transactions.deleteTransactions, {
     ids: ids as Id<'transactions'>[],
     userId: userId as Id<'users'>,
   });
-  return { success: true };
+  return { success: true, count: result.count };
 }
