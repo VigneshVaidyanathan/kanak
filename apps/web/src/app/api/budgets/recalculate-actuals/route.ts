@@ -1,5 +1,9 @@
 import { verifyAuth } from '@/lib/auth';
-import { getConvexClient } from '@kanak/api';
+import {
+  getCategoriesByUserId,
+  getConvexClient,
+  getTransactionsByAccountingDateRange,
+} from '@kanak/api';
 import { api } from '@kanak/convex/src/_generated/api';
 import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import { NextRequest, NextResponse } from 'next/server';
@@ -19,41 +23,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const convex = await getConvexClient();
-
-    // Get all transactions for the specified month/year using accountingDate
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 0, 23, 59, 59);
 
-    // Get all transactions for the user
-    const allTransactions = await convex.query(
-      api.transactions.getTransactionsByUserId,
-      {
-        userId: authPayload.userId as Id<'users'>,
-      }
+    // Get transactions for the month by accounting date via APIs package
+    const transactions = await getTransactionsByAccountingDateRange(
+      authPayload.userId,
+      monthStart,
+      monthEnd
     );
 
-    // Filter transactions by date range and exclude internal
-    const transactions = allTransactions.filter((t: any) => {
-      const accountingDate = new Date(t.accountingDate);
-      return (
-        accountingDate >= monthStart &&
-        accountingDate <= monthEnd &&
-        !t.isInternal
-      );
-    });
+    // Get all categories for the user via APIs package
+    const categories = await getCategoriesByUserId(authPayload.userId, false);
 
-    // Get all categories for the user
-    const categories = await convex.query(
-      api.categories.getCategoriesByUserId,
-      {
-        userId: authPayload.userId as Id<'users'>,
-        activeOnly: false,
-      }
+    const categoryMap = new Map(
+      categories.map((cat: { title: string }) => [cat.title, cat])
     );
 
-    // Create a map of category titles
-    const categoryMap = new Map(categories.map((cat: any) => [cat.title, cat]));
+    const convex = await getConvexClient();
 
     // Calculate actuals by category
     const actualsByCategory: Record<string, number> = {};

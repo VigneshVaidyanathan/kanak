@@ -963,7 +963,11 @@ export default function TransactionsPage() {
         ),
       },
       {
-        accessorKey: 'date',
+        id: 'date',
+        accessorFn: (row) =>
+          row.accountingDate
+            ? new Date(row.accountingDate)
+            : new Date(row.date),
         enableHiding: false,
         meta: {
           header: 'Date',
@@ -979,7 +983,10 @@ export default function TransactionsPage() {
           <DataTableColumnHeader column={column} title="Date" />
         ),
         cell: ({ row }) => {
-          const date = new Date(row.original.date);
+          const date =
+            row.original.accountingDate != null
+              ? new Date(row.original.accountingDate)
+              : new Date(row.original.date);
           return (
             <div className="text-sm">
               <div className="font-medium">

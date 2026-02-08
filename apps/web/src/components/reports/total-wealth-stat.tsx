@@ -3,10 +3,33 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@kanak/ui';
 import { IconTrendingDown, IconTrendingUp } from '@tabler/icons-react';
 
+export interface WealthBreakupItem {
+  name: string;
+  value: number;
+  color?: string;
+}
+
 interface TotalWealthStatProps {
   totalWealth: number;
   change: number;
   lastUpdated: Date | null;
+}
+
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+function formatDate(date: Date): string {
+  return date.toLocaleDateString('en-US', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 export function TotalWealthStat({
@@ -14,27 +37,10 @@ export function TotalWealthStat({
   change,
   lastUpdated,
 }: TotalWealthStatProps) {
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-US', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
-  };
-
   const isPositive = change >= 0;
 
   return (
-    <Card className="mb-6 gap-0">
+    <Card className="gap-0">
       <CardHeader>
         <CardTitle className="text-base font-medium text-muted-foreground">
           Total Wealth
@@ -42,7 +48,7 @@ export function TotalWealthStat({
       </CardHeader>
       <CardContent>
         <div className="space-y-2">
-          <div className="text-4xl font-bold">
+          <div className="text-4xl font-bold font-mono">
             ₹
             {totalWealth.toLocaleString('en-IN', {
               minimumFractionDigits: 0,
@@ -52,13 +58,13 @@ export function TotalWealthStat({
           {change !== 0 && (
             <div className="flex items-center gap-2">
               {isPositive ? (
-                <IconTrendingUp className="h-5 w-5 text-green-600" />
+                <IconTrendingUp stroke={2} className="h-5 w-5 text-green-600" />
               ) : (
                 <IconTrendingDown className="h-5 w-5 text-red-600" />
               )}
               <div className="flex gap-1 items-center w-full">
                 <span
-                  className={`text-xl flex-1 font-semibold ${
+                  className={`text-xl flex-1 font-semibold font-mono ${
                     isPositive ? 'text-green-600' : 'text-red-600'
                   }`}
                 >

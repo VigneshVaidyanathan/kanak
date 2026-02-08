@@ -1,7 +1,11 @@
-import { CreateTransactionInput, UpdateTransactionInput } from '@kanak/shared';
-import { getConvexClient } from './db';
 import { api } from '@kanak/convex/src/_generated/api';
-import type { Id } from '@kanak/convex/src/_generated/dataModel';
+import type { Doc, Id } from '@kanak/convex/src/_generated/dataModel';
+import {
+  CreateTransactionInput,
+  Transaction,
+  UpdateTransactionInput,
+} from '@kanak/shared';
+import { getConvexClient } from './db';
 
 // Helper to convert Date to timestamp
 function dateToTimestamp(date: Date): number {
@@ -14,7 +18,9 @@ function timestampToDate(timestamp: number): Date {
 }
 
 // Helper to convert Convex transaction to API format
-function convertTransactionFromConvex(transaction: any): any {
+function convertTransactionFromConvex(
+  transaction: Doc<'transactions'> | null
+): Transaction | null {
   if (!transaction) return null;
   return {
     id: transaction._id,
@@ -22,7 +28,7 @@ function convertTransactionFromConvex(transaction: any): any {
     accountingDate: timestampToDate(transaction.accountingDate),
     description: transaction.description,
     amount: transaction.amount,
-    type: transaction.type,
+    type: transaction.type as 'credit' | 'debit',
     bankAccount: transaction.bankAccount,
     reason: transaction.reason,
     category: transaction.category,
@@ -34,7 +40,9 @@ function convertTransactionFromConvex(transaction: any): any {
   };
 }
 
-export async function getTransactionsByUserId(userId: string): Promise<any[]> {
+export async function getTransactionsByUserId(
+  userId: string
+): Promise<Transaction[]> {
   const convex = await getConvexClient();
   const transactions = await convex.query(
     api.transactions.getTransactionsByUserId,
@@ -42,13 +50,42 @@ export async function getTransactionsByUserId(userId: string): Promise<any[]> {
       userId: userId as Id<'users'>,
     }
   );
-  return transactions.map(convertTransactionFromConvex);
+  return transactions
+    .map(convertTransactionFromConvex)
+    .filter((t): t is Transaction => t !== null);
+}
+
+/**
+ * Get transactions for a user within an accounting date range (inclusive).
+ * Uses accountingDate only for filtering—never transaction date.
+ */
+export async function getTransactionsByAccountingDateRange(
+  userId: string,
+  start: Date,
+  end: Date
+): Promise<Transaction[]> {
+  const convex = await getConvexClient();
+  const startTs = start.getTime();
+  const endTs = end.getTime();
+
+  const transactions = await convex.query(
+    api.transactions.getTransactionsByUserIdAndAccountingDateRange,
+    {
+      userId: userId as Id<'users'>,
+      startAccountingDate: startTs,
+      endAccountingDate: endTs,
+    }
+  );
+
+  return transactions
+    .map(convertTransactionFromConvex)
+    .filter((t): t is Transaction => t !== null);
 }
 
 export async function getTransactionsByIds(
   ids: string[],
   userId: string
-): Promise<any[]> {
+): Promise<Transaction[]> {
   const convex = await getConvexClient();
   const transactions = await convex.query(
     api.transactions.getTransactionsByIds,
@@ -59,13 +96,13 @@ export async function getTransactionsByIds(
   );
   return transactions
     .map(convertTransactionFromConvex)
-    .filter((t) => t !== null);
+    .filter((t): t is Transaction => t !== null);
 }
 
 export async function createTransaction(
   userId: string,
   input: CreateTransactionInput
-): Promise<any> {
+): Promise<Transaction> {
   const convex = await getConvexClient();
   const transaction = await convex.mutation(
     api.transactions.createTransaction,
@@ -85,14 +122,15 @@ export async function createTransaction(
       isInternal: input.isInternal,
     }
   );
-  return convertTransactionFromConvex(transaction);
+  const converted = convertTransactionFromConvex(transaction);
+  if (!converted) throw new Error('Failed to create transaction');
+  return converted;
 }
 
 export async function createTransactions(
   userId: string,
   inputs: CreateTransactionInput[]
-): Promise<any[]> {
-  // Convex mutations are atomic, so we can call them in parallel
+): Promise<Transaction[]> {
   return Promise.all(inputs.map((input) => createTransaction(userId, input)));
 }
 
@@ -102,7 +140,7 @@ export async function findDuplicateTransaction(
   amount: number,
   description: string,
   type: string
-): Promise<any> {
+): Promise<Transaction | null> {
   const convex = await getConvexClient();
   const transaction = await convex.query(
     api.transactions.findDuplicateTransaction,
@@ -120,9 +158,11 @@ export async function findDuplicateTransaction(
 export async function upsertTransactions(
   userId: string,
   inputs: CreateTransactionInput[]
-): Promise<Array<{ action: 'updated' | 'created'; transaction: any }>> {
-  const results: Array<{ action: 'updated' | 'created'; transaction: any }> =
-    [];
+): Promise<Array<{ action: 'updated' | 'created'; transaction: Transaction }>> {
+  const results: Array<{
+    action: 'updated' | 'created';
+    transaction: Transaction;
+  }> = [];
 
   for (const input of inputs) {
     const existing = await findDuplicateTransaction(
@@ -149,7 +189,7 @@ export async function updateTransaction(
   id: string,
   userId: string,
   input: UpdateTransactionInput
-): Promise<any> {
+): Promise<Transaction> {
   const convex = await getConvexClient();
   const transaction = await convex.mutation(
     api.transactions.updateTransaction,
@@ -170,13 +210,15 @@ export async function updateTransaction(
       isInternal: input.isInternal,
     }
   );
-  return convertTransactionFromConvex(transaction);
+  const converted = convertTransactionFromConvex(transaction);
+  if (!converted) throw new Error('Failed to update transaction');
+  return converted;
 }
 
 export async function deleteTransaction(
   id: string,
   userId: string
-): Promise<any> {
+): Promise<{ success: true }> {
   const convex = await getConvexClient();
   await convex.mutation(api.transactions.deleteTransaction, {
     id: id as Id<'transactions'>,
@@ -188,7 +230,7 @@ export async function deleteTransaction(
 export async function deleteTransactions(
   ids: string[],
   userId: string
-): Promise<any> {
+): Promise<{ success: true }> {
   const convex = await getConvexClient();
   await convex.mutation(api.transactions.deleteTransactions, {
     ids: ids as Id<'transactions'>[],

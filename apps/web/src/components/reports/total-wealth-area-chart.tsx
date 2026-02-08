@@ -14,9 +14,13 @@ import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
 interface TotalWealthAreaChartProps {
   data: Array<{ date: string; total: number }>;
+  className?: string;
 }
 
-export function TotalWealthAreaChart({ data }: TotalWealthAreaChartProps) {
+export function TotalWealthAreaChart({
+  data,
+  className,
+}: TotalWealthAreaChartProps) {
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -62,7 +66,7 @@ export function TotalWealthAreaChart({ data }: TotalWealthAreaChartProps) {
 
   if (data.length === 0) {
     return (
-      <Card>
+      <Card className={className}>
         <CardHeader>
           <CardTitle>Total Wealth Over Time</CardTitle>
           <CardDescription>
@@ -79,15 +83,18 @@ export function TotalWealthAreaChart({ data }: TotalWealthAreaChartProps) {
   }
 
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader>
         <CardTitle>Total Wealth Over Time</CardTitle>
         <CardDescription>
           Track your total wealth across all sections
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <ChartContainer config={chartConfig} className="h-[200px] w-full">
+      <CardContent className="flex flex-1 flex-col min-h-0">
+        <ChartContainer
+          config={chartConfig}
+          className="h-full min-h-[200px] w-full flex-1"
+        >
           <AreaChart data={data}>
             <defs>
               <linearGradient id="fillTotal" x1="0" y1="0" x2="0" y2="1">
@@ -115,7 +122,15 @@ export function TotalWealthAreaChart({ data }: TotalWealthAreaChartProps) {
               content={
                 <ChartTooltipContent
                   labelFormatter={(value) => formatDate(String(value))}
-                  formatter={(value: any) => formatCurrency(Number(value))}
+                  formatter={(value: any, name: any, item: any) => {
+                    return (
+                      <div className="text-sm flex gap-2 w-[150px] items-center">
+                        <div className=" font-medium font-mono">
+                          {formatCurrency(Number(value))}
+                        </div>
+                      </div>
+                    );
+                  }}
                   indicator="dot"
                 />
               }

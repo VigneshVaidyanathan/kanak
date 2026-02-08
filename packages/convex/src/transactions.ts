@@ -15,6 +15,33 @@ export const getTransactionsByUserId = query({
   },
 });
 
+/**
+ * Get transactions for a user within an accounting date range (inclusive).
+ * Used for budget actuals - filters by accountingDate only, not transaction date.
+ */
+export const getTransactionsByUserIdAndAccountingDateRange = query({
+  args: {
+    userId: v.id('users'),
+    startAccountingDate: v.number(),
+    endAccountingDate: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const transactions = await ctx.db
+      .query('transactions')
+      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .collect();
+
+    return transactions.filter((t) => {
+      if (t.isInternal === true) return false;
+      const accountingDate = t.accountingDate;
+      return (
+        accountingDate >= args.startAccountingDate &&
+        accountingDate <= args.endAccountingDate
+      );
+    });
+  },
+});
+
 export const getTransactionsByIds = query({
   args: {
     ids: v.array(v.id('transactions')),

@@ -10,7 +10,6 @@ import { CopyBudgetsModal } from '@/components/budget/copy-budgets-modal';
 import { MonthNavigation } from '@/components/budget/month-navigation';
 import { ProgressCell } from '@/components/budget/progress-cell';
 import { useAuthStore } from '@/store/auth-store';
-import { useTransactionsStore } from '@/store/transactions-store';
 import { Icon, NotReadyForMobile } from '@kanak/components';
 import { Budget, Category, Transaction } from '@kanak/shared';
 import {
@@ -21,7 +20,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   Input,
-  Skeleton,
   Spinner,
   useDevice,
 } from '@kanak/ui';
@@ -32,7 +30,7 @@ import {
   IconCopy,
 } from '@tabler/icons-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 const typeLabels: Record<string, string> = {
@@ -90,15 +88,12 @@ export default function BudgetPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAuthenticated, token, clearAuth } = useAuthStore();
-  const { transactions, setTransactions } = useTransactionsStore();
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<Category[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [monthTransactions, setMonthTransactions] = useState<Transaction[]>([]);
   const [budgetRows, setBudgetRows] = useState<BudgetRow[]>([]);
   const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
-  const [isRecalculating, setIsRecalculating] = useState(false);
-  const [isLoadingBudgets, setIsLoadingBudgets] = useState(false);
-  const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
 
   // Initialize month from URL (format: YYYY-MM)
   const selectedMonth = useMemo<string>(() => {
@@ -139,103 +134,51 @@ export default function BudgetPage() {
   }, [token]);
 
   // Fetch budgets
-  const fetchBudgets = useCallback(async () => {
+  const fetchBudgets = useCallback(async (): Promise<void> => {
     if (!token) return;
 
-    setIsLoadingBudgets(true);
-    try {
-      const response = await fetch(`/api/budgets?year=${year}&month=${month}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+    const response = await fetch(`/api/budgets?year=${year}&month=${month}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
 
-      if (response.ok) {
-        const data = await response.json();
-        setBudgets(data);
-      }
-    } catch (error) {
-      console.error('Error fetching budgets:', error);
-    } finally {
-      setIsLoadingBudgets(false);
+    if (response.ok) {
+      const data = await response.json();
+      setBudgets(data);
     }
   }, [token, year, month]);
 
-  // Check if transactions exist for the selected month
-  const hasTransactionsForMonth = useCallback((): boolean => {
-    if (!transactions || transactions.length === 0) {
-      return false;
-    }
-
-    const monthStart = new Date(year, month - 1, 1);
-    const monthEnd = new Date(year, month, 0, 23, 59, 59);
-
-    return transactions.some((t: Transaction) => {
-      const accountingDate = (t as any).accountingDate
-        ? new Date((t as any).accountingDate)
-        : new Date(t.date);
-      return (
-        accountingDate >= monthStart &&
-        accountingDate <= monthEnd &&
-        t.isInternal !== true
-      );
-    });
-  }, [transactions, year, month]);
-
-  // Fetch transactions if not already loaded for the selected month
-  const fetchTransactionsIfNeeded = useCallback(async () => {
+  // Fetch transactions for the selected month (by accounting date) from API
+  const fetchMonthTransactions = useCallback(async (): Promise<void> => {
     if (!token) return;
 
-    // Check if we have transactions for this month
-    if (hasTransactionsForMonth()) {
-      return; // Already have transactions for this month
-    }
-
-    // If transactions store is empty or doesn't have data for this month, fetch all transactions
-    setIsLoadingTransactions(true);
-    try {
-      const response = await fetch('/api/transactions', {
+    const response = await fetch(
+      `/api/transactions/by-month?year=${year}&month=${month}`,
+      {
         headers: {
           Authorization: `Bearer ${token}`,
         },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setTransactions(data);
       }
-    } catch (error) {
-      console.error('Error fetching transactions:', error);
-    } finally {
-      setIsLoadingTransactions(false);
-    }
-  }, [token, hasTransactionsForMonth, setTransactions]);
+    );
 
-  // Calculate actual spending per category (fallback if not stored in DB)
-  const calculateActuals = useCallback(() => {
-    if (!transactions || transactions.length === 0) {
+    if (response.ok) {
+      const data = await response.json();
+      setMonthTransactions(data);
+    } else {
+      setMonthTransactions([]);
+    }
+  }, [token, year, month]);
+
+  // Calculate actual spending per category from month transactions (from API, accounting date)
+  const calculateActuals = useCallback((): Record<string, number> => {
+    if (!monthTransactions || monthTransactions.length === 0) {
       return {};
     }
 
-    // Filter transactions by month/year using accountingDate and exclude internal
-    const monthStart = new Date(year, month - 1, 1);
-    const monthEnd = new Date(year, month, 0, 23, 59, 59);
-
-    const filteredTransactions = transactions.filter((t: Transaction) => {
-      const accountingDate = (t as any).accountingDate
-        ? new Date((t as any).accountingDate)
-        : new Date(t.date);
-      return (
-        accountingDate >= monthStart &&
-        accountingDate <= monthEnd &&
-        t.isInternal !== true
-      );
-    });
-
-    // Group by category and sum
     const actualsByCategory: Record<string, number> = {};
 
-    filteredTransactions.forEach((t: Transaction) => {
+    monthTransactions.forEach((t: Transaction) => {
       const categoryId = t.category || '__NO_CATEGORY__';
       const amount = Number(t.amount);
       // Debit increases spending, credit decreases spending
@@ -248,11 +191,11 @@ export default function BudgetPage() {
     });
 
     return actualsByCategory;
-  }, [transactions, year, month]);
+  }, [monthTransactions]);
 
-  // Build budget rows
-  const buildBudgetRows = useCallback(() => {
-    const fallbackActuals = calculateActuals();
+  // Build budget rows (actuals from month transactions fetched by accounting date)
+  const buildBudgetRows = useCallback((): void => {
+    const calculatedActuals = calculateActuals();
     const budgetMap = new Map<string, Budget>();
     budgets.forEach((b) => {
       budgetMap.set(b.categoryId, b);
@@ -261,8 +204,8 @@ export default function BudgetPage() {
     const rows: BudgetRow[] = categories.map((category) => {
       const budget = budgetMap.get(category.title);
       const budgetAmount = budget?.amount || 0;
-      // Use stored actual from database, fallback to calculated if not available
-      const actual = budget?.actual ?? fallbackActuals[category.title] ?? 0;
+      // Use actuals computed from month transactions (API), fallback to stored actual
+      const actual = calculatedActuals[category.title] ?? budget?.actual ?? 0;
       const budgetNote = budget?.note || '';
 
       return {
@@ -392,14 +335,14 @@ export default function BudgetPage() {
     }
   }, [token, budgetRows, fetchBudgets]);
 
-  // Handle recalculate actuals
-  const handleRecalculateActuals = useCallback(async () => {
+  // Handle recalculate actuals (page-level loader)
+  const handleRecalculateActuals = useCallback(async (): Promise<void> => {
     if (!token) {
       toast.error('Authentication required');
       return;
     }
 
-    setIsRecalculating(true);
+    setLoading(true);
     try {
       const response = await fetch('/api/budgets/recalculate-actuals', {
         method: 'POST',
@@ -420,19 +363,20 @@ export default function BudgetPage() {
 
       toast.success('Actuals recalculated successfully');
 
-      // Refresh budgets to get updated actuals
-      fetchBudgets();
-    } catch (error: any) {
+      // Refresh budgets and month transactions
+      await Promise.all([fetchBudgets(), fetchMonthTransactions()]);
+    } catch (error: unknown) {
+      const err = error as { message?: string };
       console.error('Error recalculating actuals:', error);
-      toast.error(error.message || 'Failed to recalculate actuals');
+      toast.error(err.message || 'Failed to recalculate actuals');
     } finally {
-      setIsRecalculating(false);
+      setLoading(false);
     }
-  }, [token, year, month, fetchBudgets]);
+  }, [token, year, month, fetchBudgets, fetchMonthTransactions]);
 
-  // Initial data fetch
+  // Initial data fetch (page-level loader)
   useEffect(() => {
-    const checkAuthAndFetch = async () => {
+    const checkAuthAndFetch = async (): Promise<void> => {
       if (typeof window !== 'undefined') {
         const storedAuth = localStorage.getItem('auth-storage');
         if (storedAuth) {
@@ -443,9 +387,13 @@ export default function BudgetPage() {
                 const { setAuth } = useAuthStore.getState();
                 setAuth(parsed.state.user, parsed.state.token);
               }
-              await fetchCategories();
-              await fetchTransactionsIfNeeded();
-              await fetchBudgets();
+              setLoading(true);
+              await Promise.all([
+                fetchCategories(),
+                fetchBudgets(),
+                fetchMonthTransactions(),
+              ]);
+              setLoading(false);
               return;
             }
           } catch (e) {
@@ -460,9 +408,13 @@ export default function BudgetPage() {
       }
 
       if (isAuthenticated || token) {
-        await fetchCategories();
-        await fetchTransactionsIfNeeded();
-        await fetchBudgets();
+        setLoading(true);
+        await Promise.all([
+          fetchCategories(),
+          fetchBudgets(),
+          fetchMonthTransactions(),
+        ]);
+        setLoading(false);
       }
     };
 
@@ -474,20 +426,39 @@ export default function BudgetPage() {
   useEffect(() => {
     if (categories.length > 0) {
       buildBudgetRows();
-      setLoading(false);
     }
-  }, [categories, budgets, transactions, buildBudgetRows]);
+  }, [categories, budgets, monthTransactions, buildBudgetRows]);
 
-  // Rebuild rows when month changes
+  // When month changes (not on initial mount), refetch budgets and month transactions (page-level loader)
+  const prevMonthRef = useRef<{ year: number; month: number } | null>(null);
   useEffect(() => {
-    if (categories.length > 0) {
-      const fetchData = async () => {
-        await fetchTransactionsIfNeeded();
-        await fetchBudgets();
-      };
-      fetchData();
+    if (!token || categories.length === 0) return;
+    if (prevMonthRef.current === null) {
+      prevMonthRef.current = { year, month };
+      return;
     }
-  }, [year, month, fetchBudgets, fetchTransactionsIfNeeded, categories.length]);
+    if (
+      prevMonthRef.current.year === year &&
+      prevMonthRef.current.month === month
+    ) {
+      return;
+    }
+    prevMonthRef.current = { year, month };
+
+    const fetchData = async (): Promise<void> => {
+      setLoading(true);
+      await Promise.all([fetchBudgets(), fetchMonthTransactions()]);
+      setLoading(false);
+    };
+    fetchData();
+  }, [
+    year,
+    month,
+    token,
+    categories.length,
+    fetchBudgets,
+    fetchMonthTransactions,
+  ]);
 
   // Create category map for quick lookup
   const categoryMap = useMemo(() => {
@@ -675,12 +646,10 @@ export default function BudgetPage() {
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={handleRecalculateActuals}
-                disabled={isRecalculating}
+                disabled={loading}
               >
                 <IconCalculator size={16} />
-                <span>
-                  {isRecalculating ? 'Recalculating...' : 'Recalculate Actuals'}
-                </span>
+                <span>{loading ? 'Loading...' : 'Recalculate Actuals'}</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -753,72 +722,7 @@ export default function BudgetPage() {
 
         {/* List Items */}
         <div className="flex flex-col divide-y">
-          {isLoadingBudgets && categories.length > 0 ? (
-            // Show skeleton loaders when loading budgets
-            categories.map((category) => (
-              <div key={category.id} className="flex items-center gap-4 p-2">
-                {/* Category Icon + Name */}
-                <div className="flex items-center gap-3 min-w-[200px] flex-shrink-0">
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-                    style={{
-                      backgroundColor: `${category.color}20`,
-                    }}
-                  >
-                    <Icon
-                      name={category.icon as any}
-                      size={18}
-                      style={{ color: category.color }}
-                    />
-                  </div>
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <span className="font-medium text-sm">
-                      {category.title}
-                    </span>
-                    {category.description && (
-                      <span className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
-                        {category.description}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Budget Amount Skeleton */}
-                <div className="flex-1 min-w-[170px] max-w-[170px]">
-                  <Skeleton className="h-[14px] w-full rounded-md" />
-                </div>
-
-                {/* Actual Skeleton */}
-                <div className="flex-shrink-0 min-w-[110px] flex justify-end">
-                  <Skeleton className="h-4 w-20 rounded" />
-                </div>
-
-                {/* Progress Skeleton */}
-                <div className="flex-1 min-w-[230px] max-w-[300px]">
-                  <Skeleton className="h-[14px] w-full rounded" />
-                </div>
-
-                {/* Tags Skeleton */}
-                <div className="min-w-[250px] flex-shrink-0">
-                  <div className="flex items-center gap-2">
-                    <Skeleton className="h-5 w-16 rounded" />
-                    <Skeleton className="h-5 w-16 rounded" />
-                  </div>
-                </div>
-
-                {/* Note */}
-                <div className="flex-1 min-w-[200px]">
-                  <Input
-                    type="text"
-                    value=""
-                    disabled
-                    placeholder="Add a note..."
-                    className="w-full"
-                  />
-                </div>
-              </div>
-            ))
-          ) : budgetRows.length === 0 ? (
+          {budgetRows.length === 0 ? (
             <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
               No categories found
             </div>

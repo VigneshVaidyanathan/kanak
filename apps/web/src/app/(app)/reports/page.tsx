@@ -4,6 +4,7 @@ import { SectionPieChart } from '@/components/reports/section-pie-chart';
 import { TotalWealthAreaChart } from '@/components/reports/total-wealth-area-chart';
 import { TotalWealthChart } from '@/components/reports/total-wealth-chart';
 import { TotalWealthStat } from '@/components/reports/total-wealth-stat';
+import { WealthBreakupChart } from '@/components/reports/wealth-breakup-chart';
 import { useAuthStore } from '@/store/auth-store';
 import { NotReadyForMobile } from '@kanak/components';
 import {
@@ -151,6 +152,7 @@ export default function ReportsPage() {
         lineItemsSeries: [],
         sectionSeries: [],
         totalWealthAreaChartData: [],
+        wealthBreakupPieData: [],
       };
     }
 
@@ -293,6 +295,20 @@ export default function ReportsPage() {
       total: getTotalWealth(date),
     }));
 
+    // Prepare wealth breakup pie data (latest date only, sections with value > 0)
+    const wealthBreakupPieData =
+      latestDate != null
+        ? wealthData.sections
+            .map((section, index) => ({
+              name: section.name,
+              value: getSectionTotal(section.id, latestDate),
+              color:
+                section.color ??
+                contrastingColors[index % contrastingColors.length],
+            }))
+            .filter((item) => item.value > 0)
+        : [];
+
     return {
       dates: sortedDates,
       entryValues: values,
@@ -305,6 +321,7 @@ export default function ReportsPage() {
       lineItemsSeries,
       sectionSeries,
       totalWealthAreaChartData,
+      wealthBreakupPieData,
     };
   }, [wealthData, formatDateKey, parseDateKey]);
 
@@ -353,18 +370,21 @@ export default function ReportsPage() {
       </div>
 
       <div className="flex flex-col gap-4">
-        <div className="flex gap-4">
-          <div className="w-1/3">
-            {/* Total Wealth Stat Card */}
+        <div className="flex gap-4 items-stretch">
+          <div className="w-1/3 flex flex-col gap-4">
             <TotalWealthStat
               totalWealth={processedData.totalWealth}
               change={processedData.change}
               lastUpdated={processedData.lastUpdated}
             />
+            {processedData.wealthBreakupPieData.length > 0 && (
+              <WealthBreakupChart data={processedData.wealthBreakupPieData} />
+            )}
           </div>
-          <div className="w-2/3">
+          <div className="w-2/3 flex flex-col min-h-0">
             <TotalWealthAreaChart
               data={processedData.totalWealthAreaChartData}
+              className="flex-1 flex flex-col min-h-0"
             />
           </div>
         </div>

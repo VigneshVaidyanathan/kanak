@@ -403,8 +403,9 @@ export const Navbar09 = React.forwardRef<HTMLElement, Navbar09Props>(
                             }
                           }}
                           className={cn(
-                            'flex size-8 items-center justify-center rounded-md transition-colors hover:bg-accent hover:text-accent-foreground cursor-pointer',
-                            active && 'bg-primary text-primary-foreground'
+                            'flex size-8 items-center justify-center rounded-md transition-colors hover:bg-accent hover:border hover:text-accent-foreground cursor-pointer',
+                            active &&
+                              'bg-primary text-primary-foreground hover:bg-primary hover:border-0'
                           )}
                           aria-label={item.title}
                         >
