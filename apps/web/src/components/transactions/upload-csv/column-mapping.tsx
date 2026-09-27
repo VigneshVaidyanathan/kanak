@@ -7,13 +7,15 @@ import {
   type DateFormat,
   type FileContent,
 } from '@/store/csv-upload-store';
-import { BankAccount, Transaction } from '@kanak/shared';
+import { api } from '@kanak/convex/src/_generated/api';
+import { Transaction } from '@kanak/shared';
 import { Alert, AlertDescription, AlertTitle, Button } from '@kanak/ui';
 import {
   IconArrowLeft,
   IconArrowRight,
   IconSparkles,
 } from '@tabler/icons-react';
+import { useQuery } from 'convex/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TemplateMappingForm } from './template-mapping-form';
 
@@ -99,8 +101,15 @@ export const ColumnMapping = ({
     dateFormat,
     setDateFormat,
   } = useCsvUploadStore();
-  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
-  const [loadingBankAccounts, setLoadingBankAccounts] = useState(true);
+  const bankAccountsResult = useQuery(
+    api.bankAccounts.getBankAccountsByUserId,
+    {}
+  );
+  const loadingBankAccounts = bankAccountsResult === undefined;
+  const bankAccounts = useMemo(
+    () => bankAccountsResult ?? [],
+    [bankAccountsResult]
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [autoMapping, setAutoMapping] = useState(false);
   const autoMappedFor = useRef<FileContent | undefined>(undefined);
@@ -115,33 +124,6 @@ export const ColumnMapping = ({
     { value: 'YYYY/MM/DD', label: 'YYYY/MM/DD (e.g., 2024/12/25)' },
     { value: 'auto', label: 'Auto-detect' },
   ];
-
-  // Fetch bank accounts
-  useEffect(() => {
-    const fetchBankAccounts = async () => {
-      if (!token) return;
-
-      try {
-        setLoadingBankAccounts(true);
-        const response = await fetch('/api/bank-accounts', {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setBankAccounts(data);
-        }
-      } catch (error) {
-        console.error('Error fetching bank accounts:', error);
-      } finally {
-        setLoadingBankAccounts(false);
-      }
-    };
-
-    fetchBankAccounts();
-  }, [token]);
 
   useEffect(() => {
     setColumnMapping(

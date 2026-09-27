@@ -1,6 +1,6 @@
-import { verifyAuth } from '@/lib/auth';
-import { createBankAccount } from '@kanak/api';
-import { CreateBankAccountInput } from '@kanak/shared';
+import { convexAuthNextjsToken } from '@convex-dev/auth/nextjs/server';
+import { getAuthedConvexClient } from '@kanak/api';
+import { api } from '@kanak/convex/src/_generated/api';
 import { NextRequest, NextResponse } from 'next/server';
 
 // Bank account mappings: [accountName, bankName]
@@ -18,41 +18,30 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
-    const authPayload = await verifyAuth(request);
-    const userId = authPayload.userId;
+    const token = await convexAuthNextjsToken();
+    if (!token) {
+      throw new Error('No authentication token provided');
+    }
+    // The mutation takes the owner from the token, so the seeder can only ever
+    // write to the account of whoever is signed in.
+    const convex = await getAuthedConvexClient(token);
 
     const results: Array<{
       success: boolean;
       account: string;
-      userId?: string;
       error?: string;
     }> = [];
     const errors: Array<{ account: string; error: string }> = [];
 
     for (const [accountName, bankName] of bankAccountMappings) {
       try {
-        const bankAccountData: CreateBankAccountInput = {
-          name: accountName,
-          bankName: bankName,
-        };
-
-        const bankAccount = await createBankAccount(userId, bankAccountData);
-        results.push({
-          success: true,
-          account: bankAccount.name,
-          userId: userId,
-        });
+        const bankAccount = await convex.mutation(
+          api.bankAccounts.createBankAccount,
+          { name: accountName, bankName }
+        );
+        results.push({ success: true, account: bankAccount.name });
       } catch (error: any) {
-        // Skip if bank account already exists (duplicate)
-        if (error.code === 'P2002') {
-          results.push({
-            success: false,
-            account: accountName,
-            error: 'Already exists',
-          });
-        } else {
-          errors.push({ account: accountName, error: error.message });
-        }
+        errors.push({ account: accountName, error: error.message });
       }
     }
 

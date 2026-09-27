@@ -1,6 +1,7 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import { FormInput } from '@kanak/components';
 import {
   CreateBankAccountInput,
@@ -18,6 +19,7 @@ import {
   Spinner,
 } from '@kanak/ui';
 import { IconX } from '@tabler/icons-react';
+import { useMutation } from 'convex/react';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 
@@ -32,7 +34,6 @@ interface BankAccountFormModalProps {
     ifscCode?: string;
     branch?: string;
   };
-  onSuccess: () => void;
 }
 
 type BankAccountFormData = CreateBankAccountInput;
@@ -41,9 +42,9 @@ export function BankAccountFormModal({
   open,
   onOpenChange,
   bankAccount,
-  onSuccess,
 }: BankAccountFormModalProps) {
-  const { token } = useAuthStore();
+  const createBankAccount = useMutation(api.bankAccounts.createBankAccount);
+  const updateBankAccount = useMutation(api.bankAccounts.updateBankAccount);
   const isEditing = !!bankAccount;
 
   const form = useForm<BankAccountFormData>({
@@ -84,26 +85,15 @@ export function BankAccountFormModal({
         : createBankAccountSchema;
       const validatedData = schema.parse(data);
 
-      const url = bankAccount
-        ? `/api/bank-accounts/${bankAccount.id}`
-        : '/api/bank-accounts';
-      const method = bankAccount ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(validatedData),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to save bank account');
+      if (bankAccount) {
+        await updateBankAccount({
+          id: bankAccount.id as Id<'bank_accounts'>,
+          ...validatedData,
+        });
+      } else {
+        await createBankAccount(validatedData as CreateBankAccountInput);
       }
 
-      onSuccess();
       onOpenChange(false);
       form.reset();
     } catch (error: any) {

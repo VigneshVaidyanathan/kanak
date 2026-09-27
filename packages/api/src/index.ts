@@ -3,7 +3,6 @@ export * from './transactions';
 export * from './transactionUploads';
 export * from './auth';
 export * from './categories';
-export * from './bank-accounts';
 export * from './transaction-rules';
 export * from './transaction-rule-matcher';
 export * from './budgets';

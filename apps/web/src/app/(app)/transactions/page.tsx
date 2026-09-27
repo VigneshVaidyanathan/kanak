@@ -14,17 +14,13 @@ import {
 import { UploadCsvModal } from '@/components/transactions/upload-csv';
 import { useAuthStore } from '@/store/auth-store';
 import { useTransactionsStore } from '@/store/transactions-store';
+import { api } from '@kanak/convex/src/_generated/api';
 import {
   DataTable,
   DataTableColumnHeader,
   NotReadyForMobile,
 } from '@kanak/components';
-import {
-  BankAccount,
-  Category,
-  Transaction,
-  TransactionRule,
-} from '@kanak/shared';
+import { Category, Transaction, TransactionRule } from '@kanak/shared';
 import {
   Badge,
   Button,
@@ -64,6 +60,7 @@ import {
   PaginationState,
   ColumnFilter as TanStackColumnFilter,
 } from '@tanstack/react-table';
+import { useQuery } from 'convex/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -83,7 +80,16 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const bankAccountsResult = useQuery(
+    api.bankAccounts.getBankAccountsByUserId,
+    {}
+  );
+  // Memoized: the `?? []` would otherwise hand a fresh array to the memos below
+  // on every render.
+  const bankAccounts = useMemo(
+    () => bankAccountsResult ?? [],
+    [bankAccountsResult]
+  );
   const [setupRuleModalOpen, setSetupRuleModalOpen] = useState(false);
   const [selectedTextForRule, setSelectedTextForRule] = useState<string>('');
   const [selectedTransactionType, setSelectedTransactionType] = useState<
@@ -384,7 +390,6 @@ export default function TransactionsPage() {
               hasFetchedRef.current = true;
               fetchTransactions();
               fetchCategories();
-              fetchBankAccounts();
               return;
             }
           } catch (e) {
@@ -402,7 +407,6 @@ export default function TransactionsPage() {
         hasFetchedRef.current = true;
         fetchTransactions();
         fetchCategories();
-        fetchBankAccounts();
       }
     };
 
@@ -426,25 +430,6 @@ export default function TransactionsPage() {
       }
     } catch (error) {
       console.error('Error fetching categories:', error);
-    }
-  }, [token]);
-
-  const fetchBankAccounts = useCallback(async () => {
-    if (!token) return;
-
-    try {
-      const response = await fetch('/api/bank-accounts', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setBankAccounts(data);
-      }
-    } catch (error) {
-      console.error('Error fetching bank accounts:', error);
     }
   }, [token]);
 

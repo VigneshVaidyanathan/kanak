@@ -16,6 +16,7 @@ import type * as csvMapping from '../csvMapping.js';
 import type * as http from '../http.js';
 import type * as index from '../index.js';
 import type * as legacySessions from '../legacySessions.js';
+import type * as lib_auth from '../lib/auth.js';
 import type * as migrations from '../migrations.js';
 import type * as transactionRules from '../transactionRules.js';
 import type * as transactionUploads from '../transactionUploads.js';
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   index: typeof index;
   legacySessions: typeof legacySessions;
+  'lib/auth': typeof lib_auth;
   migrations: typeof migrations;
   transactionRules: typeof transactionRules;
   transactionUploads: typeof transactionUploads;
