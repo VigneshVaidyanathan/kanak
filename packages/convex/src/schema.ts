@@ -19,9 +19,6 @@ export default defineSchema({
     isAnonymous: v.optional(v.boolean()),
     // Ours. Optional because Convex Auth inserts users without them.
     role: v.optional(v.string()),
-    // Pre-Convex-Auth bcrypt hash. Read once by the authAccounts backfill,
-    // then cleared; remove this field after the backfill has run everywhere.
-    password: v.optional(v.string()),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
   }).index('by_email', ['email']),
@@ -151,16 +148,6 @@ export default defineSchema({
       'lineItemId',
       'date',
     ]),
-
-  sessions: defineTable({
-    userId: v.id('users'),
-    token: v.string(),
-    expiresAt: v.number(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index('by_token', ['token'])
-    .index('by_userId', ['userId']),
 
   transaction_uploads: defineTable({
     userId: v.id('users'),

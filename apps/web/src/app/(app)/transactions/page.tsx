@@ -12,8 +12,8 @@ import {
   TransactionRuleModal,
 } from '@/components/transactions/rules';
 import { UploadCsvModal } from '@/components/transactions/upload-csv';
-import { useAuthStore } from '@/store/auth-store';
 import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import {
   DataTable,
   DataTableColumnHeader,
@@ -59,7 +59,7 @@ import {
   PaginationState,
   ColumnFilter as TanStackColumnFilter,
 } from '@tanstack/react-table';
-import { useQuery } from 'convex/react';
+import { useConvex, useQuery } from 'convex/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -73,7 +73,7 @@ export default function TransactionsPage() {
   const { isDesktop } = useDevice();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isAuthenticated, token, clearAuth } = useAuthStore();
+  const convex = useConvex();
   const transactionsResult = useQuery(
     api.transactions.getTransactionsByUserId,
     {}
@@ -377,47 +377,6 @@ export default function TransactionsPage() {
     },
     [router, searchParams, selectedMonth]
   );
-
-  // ponytail: one fetch per mount. StrictMode double-invokes effects in dev and
-  // setAuth re-runs this effect, so without the guard every load fires each
-  // request twice.
-  const hasFetchedRef = useRef(false);
-
-  useEffect(() => {
-    const checkAuthAndFetch = () => {
-      if (hasFetchedRef.current) return;
-      if (typeof window !== 'undefined') {
-        const storedAuth = localStorage.getItem('auth-storage');
-        if (storedAuth) {
-          try {
-            const parsed = JSON.parse(storedAuth);
-            if (parsed.state?.token && parsed.state?.user) {
-              if (!isAuthenticated) {
-                const { setAuth } = useAuthStore.getState();
-                setAuth(parsed.state.user, parsed.state.token);
-              }
-              hasFetchedRef.current = true;
-              return;
-            }
-          } catch (e) {
-            // Invalid stored data
-          }
-        }
-      }
-
-      if (!isAuthenticated && !token) {
-        router.push('/auth');
-        return;
-      }
-
-      if (isAuthenticated || token) {
-        hasFetchedRef.current = true;
-      }
-    };
-
-    checkAuthAndFetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, token, router]);
 
   const handleDeleteTransaction = useCallback((transaction: Transaction) => {
     // TODO: Implement delete functionality
@@ -1083,20 +1042,15 @@ export default function TransactionsPage() {
                 ruleId: string
               ) => {
                 try {
-                  const response = await fetch(
-                    `/api/transaction-rules/${ruleId}`,
-                    {
-                      headers: {
-                        Authorization: `Bearer ${token}`,
-                      },
-                    }
-                  );
+                  const rule = (await convex.query(
+                    api.transactionRules.getTransactionRuleById,
+                    { id: ruleId as Id<'transaction_rules'> }
+                  )) as TransactionRule | null;
 
-                  if (!response.ok) {
+                  if (!rule) {
                     throw new Error('Failed to fetch transaction rule');
                   }
 
-                  const rule: TransactionRule = await response.json();
                   setSelectedRuleForEdit(rule);
                   setSelectedTextForRule(selectedText);
                   setSelectedTransactionType(transactionType);
@@ -1210,6 +1164,7 @@ export default function TransactionsPage() {
       },
     ],
     [
+      convex,
       categoryOptions,
       typeOptions,
       reportOptions,
@@ -1217,7 +1172,6 @@ export default function TransactionsPage() {
       transactionActions,
       categories,
       bankAccounts,
-      token,
       updateTransactionForMonthView,
       categoryFilterFn,
       reportsFilterFn,

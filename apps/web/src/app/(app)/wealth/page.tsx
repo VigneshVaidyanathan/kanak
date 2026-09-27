@@ -7,7 +7,6 @@ import { WealthDatePickerModal } from '@/components/wealth/wealth-date-picker-mo
 import { WealthLineItemModal } from '@/components/wealth/wealth-line-item-modal';
 import { WealthSectionModal } from '@/components/wealth/wealth-section-modal';
 import { importWealthCsv } from '@/lib/wealth-import';
-import { useAuthStore } from '@/store/auth-store';
 import { NotReadyForMobile } from '@kanak/components';
 import { api } from '@kanak/convex/src/_generated/api';
 import type { Id } from '@kanak/convex/src/_generated/dataModel';
@@ -151,7 +150,6 @@ export default function WealthPage() {
   );
   const { isDesktop } = useDevice();
   const router = useRouter();
-  const { isAuthenticated, token } = useAuthStore();
   const [wealthData, setWealthData] = useState<WealthData | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [dates, setDates] = useState<Date[]>([]);
@@ -266,8 +264,6 @@ export default function WealthPage() {
     return () => clearTimeout(timer);
   }, [sectionsResult, entriesResult, formatDateKey, parseDateKey]);
 
-  // ponytail: refetch once per (token, range). StrictMode double-invokes effects
-  // in dev and setAuth re-runs this one, so the guard stops duplicate requests.
   const lastFetchKeyRef = useRef<string | null>(null);
 
   // Initial data fetch
@@ -329,7 +325,7 @@ export default function WealthPage() {
 
   // Save all entries for all dates (only dates that have at least one non-zero value)
   const saveAllEntries = useCallback(async () => {
-    if (!token || !wealthData || dates.length === 0) return;
+    if (!wealthData || dates.length === 0) return;
 
     // Check if values have actually changed from initial load
     if (!hasEntryValuesChanged(entryValues, initialEntryValuesRef.current)) {
@@ -402,7 +398,6 @@ export default function WealthPage() {
       setIsSaving(false);
     }
   }, [
-    token,
     wealthData,
     entryValues,
     dates,
@@ -505,7 +500,7 @@ export default function WealthPage() {
     async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
       const file = event.target.files?.[0];
       event.target.value = '';
-      if (!file || !token) return;
+      if (!file) return;
 
       const toastId = toast.loading(`Uploading ${file.name}...`);
       try {
@@ -531,7 +526,6 @@ export default function WealthPage() {
       }
     },
     [
-      token,
       convex,
       createWealthSection,
       createWealthLineItem,

@@ -3,7 +3,6 @@
 import { ConvexAuthNextjsProvider } from '@convex-dev/auth/nextjs';
 import { ConvexReactClient } from 'convex/react';
 import type { ReactNode } from 'react';
-import { AuthSync } from './auth-sync';
 
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
 
@@ -18,7 +17,7 @@ const convex = new ConvexReactClient(convexUrl);
 export function ConvexClientProvider({ children }: { children: ReactNode }) {
   return (
     <ConvexAuthNextjsProvider client={convex}>
-      <AuthSync>{children}</AuthSync>
+      {children}
     </ConvexAuthNextjsProvider>
   );
 }

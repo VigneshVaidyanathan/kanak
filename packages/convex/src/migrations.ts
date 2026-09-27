@@ -94,28 +94,3 @@ export const setPassword = internalAction({
     return { email };
   },
 });
-
-/**
- * Clears the dead `users.password` field once everyone has a working Convex
- * Auth password. The bcrypt hashes it holds are unverifiable now, so this is
- * removing dead weight, not credentials.
- *
- *   npx convex run migrations:dropLegacyPasswordField
- */
-export const dropLegacyPasswordField = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    const users = await ctx.db.query('users').collect();
-    let cleared = 0;
-
-    for (const user of users) {
-      if (user.password === undefined) {
-        continue;
-      }
-      await ctx.db.patch(user._id, { password: undefined });
-      cleared++;
-    }
-
-    return { cleared, total: users.length };
-  },
-});

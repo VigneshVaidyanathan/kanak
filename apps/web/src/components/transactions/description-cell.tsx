@@ -1,6 +1,5 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
 import { api } from '@kanak/convex/src/_generated/api';
 import { Transaction, TransactionRule } from '@kanak/shared';
 import {
@@ -35,7 +34,6 @@ export function DescriptionCell({
   onSetUpRule,
   onAddToExistingRule,
 }: DescriptionCellProps) {
-  const { token } = useAuthStore();
   const [selectedText, setSelectedText] = useState<string>('');
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [submenuOpen, setSubmenuOpen] = useState(false);

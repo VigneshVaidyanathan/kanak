@@ -1,6 +1,5 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
 import {
   useCsvUploadStore,
   type CsvColumnMapping,
@@ -93,7 +92,6 @@ export const ColumnMapping = ({
   onComplete: (transactions: any[]) => void;
   onBack: () => void;
 }) => {
-  const { token } = useAuthStore();
   const {
     columnMapping,
     setColumnMapping,
@@ -137,17 +135,14 @@ export const ColumnMapping = ({
 
   // Ask Jev to fill in the mapping. Suggestions only: the user still edits.
   const autoMap = useCallback(async () => {
-    if (!token || !fileContent) return;
+    if (!fileContent) return;
 
     setAutoMapping(true);
     setErrorMessage(null);
     try {
       const response = await fetch('/api/csv/map-columns', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           headers: fileContent.headers,
           rows: fileContent.rows.slice(0, 5),
@@ -161,6 +156,11 @@ export const ColumnMapping = ({
             })),
         }),
       });
+
+      if (response.status === 401) {
+        window.location.href = '/auth';
+        return;
+      }
 
       if (!response.ok) {
         const { error } = await response.json().catch(() => ({}));
@@ -192,15 +192,15 @@ export const ColumnMapping = ({
     } finally {
       setAutoMapping(false);
     }
-  }, [token, fileContent, setColumnMapping, setDateFormat]);
+  }, [fileContent, setColumnMapping, setDateFormat]);
 
   // Run once per file; the AI Suggest button re-runs it on demand.
   useEffect(() => {
-    if (!token || !fileContent) return;
+    if (!fileContent) return;
     if (autoMappedFor.current === fileContent) return;
     autoMappedFor.current = fileContent;
     autoMap();
-  }, [token, fileContent, autoMap]);
+  }, [fileContent, autoMap]);
 
   const canComplete = useMemo(() => {
     // Template mode: check date, bankAccount, description, and both withdrawal/deposit

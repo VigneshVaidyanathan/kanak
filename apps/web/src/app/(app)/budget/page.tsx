@@ -9,7 +9,6 @@ import { IncomeExpenseSavingsChart } from '@/components/budget/charts/income-exp
 import { CopyBudgetsModal } from '@/components/budget/copy-budgets-modal';
 import { MonthNavigation } from '@/components/budget/month-navigation';
 import { ProgressCell } from '@/components/budget/progress-cell';
-import { useAuthStore } from '@/store/auth-store';
 import { Icon, NotReadyForMobile } from '@kanak/components';
 import { api } from '@kanak/convex/src/_generated/api';
 import { Budget, Category, Transaction } from '@kanak/shared';
@@ -89,7 +88,6 @@ export default function BudgetPage() {
   const { isDesktop } = useDevice();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isAuthenticated, token, clearAuth } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const categoriesResult = useQuery(api.categories.getCategoriesByUserId, {});
   const categories = useMemo(
@@ -242,11 +240,6 @@ export default function BudgetPage() {
   const [isSavingAll, setIsSavingAll] = useState(false);
 
   const handleSaveAll = useCallback(async () => {
-    if (!token) {
-      toast.error('Authentication required');
-      return;
-    }
-
     const changedRows = budgetRows.filter((row) => row.hasChanged);
     if (changedRows.length === 0) {
       toast.info('No changes to save');
@@ -289,15 +282,10 @@ export default function BudgetPage() {
     } finally {
       setIsSavingAll(false);
     }
-  }, [token, budgetRows, createOrUpdateBudget]);
+  }, [budgetRows, createOrUpdateBudget]);
 
   // Handle recalculate actuals (page-level loader)
   const handleRecalculateActuals = useCallback(async (): Promise<void> => {
-    if (!token) {
-      toast.error('Authentication required');
-      return;
-    }
-
     setLoading(true);
     try {
       await recalculateActuals({ year, month });
@@ -312,75 +300,7 @@ export default function BudgetPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, year, month, recalculateActuals]);
-
-  // Initial data fetch (page-level loader)
-  useEffect(() => {
-    const checkAuthAndFetch = async (): Promise<void> => {
-      if (typeof window !== 'undefined') {
-        const storedAuth = localStorage.getItem('auth-storage');
-        if (storedAuth) {
-          try {
-            const parsed = JSON.parse(storedAuth);
-            if (parsed.state?.token && parsed.state?.user) {
-              if (!isAuthenticated) {
-                const { setAuth } = useAuthStore.getState();
-                setAuth(parsed.state.user, parsed.state.token);
-              }
-              setLoading(true);
-              setLoading(false);
-              return;
-            }
-          } catch (e) {
-            // Invalid stored data
-          }
-        }
-      }
-
-      if (!isAuthenticated && !token) {
-        router.push('/auth');
-        return;
-      }
-
-      if (isAuthenticated || token) {
-        setLoading(true);
-        setLoading(false);
-      }
-    };
-
-    checkAuthAndFetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, token, router]);
-
-  // Rebuild rows when data changes
-  useEffect(() => {
-    if (categories.length > 0) {
-      buildBudgetRows();
-    }
-  }, [categories, budgets, monthTransactions, buildBudgetRows]);
-
-  // When month changes (not on initial mount), refetch budgets and month transactions (page-level loader)
-  const prevMonthRef = useRef<{ year: number; month: number } | null>(null);
-  useEffect(() => {
-    if (!token || categories.length === 0) return;
-    if (prevMonthRef.current === null) {
-      prevMonthRef.current = { year, month };
-      return;
-    }
-    if (
-      prevMonthRef.current.year === year &&
-      prevMonthRef.current.month === month
-    ) {
-      return;
-    }
-    prevMonthRef.current = { year, month };
-
-    const fetchData = async (): Promise<void> => {
-      setLoading(true);
-      setLoading(false);
-    };
-    fetchData();
-  }, [year, month, token, categories.length]);
+  }, [year, month, recalculateActuals]);
 
   // Create category map for quick lookup
   const categoryMap = useMemo(() => {
