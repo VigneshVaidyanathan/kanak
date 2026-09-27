@@ -1,45 +1,59 @@
 import { v } from 'convex/values';
+import { Doc } from './_generated/dataModel.js';
 import { mutation, query } from './_generated/server.js';
+import { requireUser } from './lib/auth.js';
+
+// Matches the shape the deleted API layer used to map: `id`, not `_id`, and
+// epoch-millisecond timestamps, since Convex cannot serialize a Date.
+function toCategory(category: Doc<'categories'>) {
+  return {
+    id: category._id,
+    title: category.title,
+    color: category.color,
+    icon: category.icon,
+    description: category.description,
+    type: category.type,
+    priority: category.priority,
+    active: category.active,
+    userId: category.userId,
+    createdAt: category.createdAt,
+    updatedAt: category.updatedAt,
+  };
+}
 
 export const getCategoriesByUserId = query({
-  args: {
-    userId: v.id('users'),
-    activeOnly: v.optional(v.boolean()),
-  },
+  args: { activeOnly: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
-    let query = ctx.db
+    const userId = await requireUser(ctx);
+
+    const categories = await ctx.db
       .query('categories')
-      .withIndex('by_userId', (q) => q.eq('userId', args.userId));
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .collect();
 
-    const categories = await query.collect();
-
-    let filtered = categories;
-    if (args.activeOnly !== false) {
-      filtered = categories.filter((c) => c.active);
-    }
-
-    // Sort by title ascending
-    return filtered.sort((a, b) => a.title.localeCompare(b.title));
+    return categories
+      .filter((c) => args.activeOnly === false || c.active)
+      .sort((a, b) => a.title.localeCompare(b.title))
+      .map(toCategory);
   },
 });
 
 export const getCategoryById = query({
-  args: {
-    id: v.id('categories'),
-    userId: v.id('users'),
-  },
+  args: { id: v.id('categories') },
   handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+
     const category = await ctx.db.get(args.id);
-    if (!category || category.userId !== args.userId) {
+    if (!category || category.userId !== userId) {
       return null;
     }
-    return category;
+
+    return toCategory(category);
   },
 });
 
 export const createCategory = mutation({
   args: {
-    userId: v.id('users'),
     title: v.string(),
     color: v.string(),
     icon: v.string(),
@@ -49,28 +63,24 @@ export const createCategory = mutation({
     active: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
     const now = Date.now();
+
     const categoryId = await ctx.db.insert('categories', {
-      title: args.title,
-      color: args.color,
-      icon: args.icon,
-      description: args.description,
-      type: args.type,
-      priority: args.priority,
+      ...args,
       active: args.active ?? true,
-      userId: args.userId,
+      userId,
       createdAt: now,
       updatedAt: now,
     });
 
-    return await ctx.db.get(categoryId);
+    return toCategory((await ctx.db.get(categoryId))!);
   },
 });
 
 export const updateCategory = mutation({
   args: {
     id: v.id('categories'),
-    userId: v.id('users'),
     title: v.optional(v.string()),
     color: v.optional(v.string()),
     icon: v.optional(v.string()),
@@ -80,40 +90,34 @@ export const updateCategory = mutation({
     active: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const { id, userId, ...updates } = args;
+    const userId = await requireUser(ctx);
+    const { id, ...updates } = args;
 
-    // Verify ownership - Convex doesn't support compound where, so we check manually
+    // "Not found" rather than "forbidden" on someone else's row: the response
+    // should not confirm that an id exists.
     const existing = await ctx.db.get(id);
     if (!existing || existing.userId !== userId) {
       throw new Error('Category not found');
     }
 
-    await ctx.db.patch(id, {
-      ...updates,
-      updatedAt: Date.now(),
-    });
+    await ctx.db.patch(id, { ...updates, updatedAt: Date.now() });
 
-    return await ctx.db.get(id);
+    return toCategory((await ctx.db.get(id))!);
   },
 });
 
 export const deactivateCategory = mutation({
-  args: {
-    id: v.id('categories'),
-    userId: v.id('users'),
-  },
+  args: { id: v.id('categories') },
   handler: async (ctx, args) => {
-    // Verify ownership
+    const userId = await requireUser(ctx);
+
     const existing = await ctx.db.get(args.id);
-    if (!existing || existing.userId !== args.userId) {
+    if (!existing || existing.userId !== userId) {
       throw new Error('Category not found');
     }
 
-    await ctx.db.patch(args.id, {
-      active: false,
-      updatedAt: Date.now(),
-    });
+    await ctx.db.patch(args.id, { active: false, updatedAt: Date.now() });
 
-    return await ctx.db.get(args.id);
+    return toCategory((await ctx.db.get(args.id))!);
   },
 });

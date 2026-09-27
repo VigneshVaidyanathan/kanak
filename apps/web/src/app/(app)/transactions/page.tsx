@@ -79,7 +79,11 @@ export default function TransactionsPage() {
     useTransactionsStore();
   const [loading, setLoading] = useState(true);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const categoriesResult = useQuery(api.categories.getCategoriesByUserId, {});
+  const categories = useMemo(
+    () => (categoriesResult ?? []) as Category[],
+    [categoriesResult]
+  );
   const bankAccountsResult = useQuery(
     api.bankAccounts.getBankAccountsByUserId,
     {}
@@ -389,7 +393,6 @@ export default function TransactionsPage() {
               }
               hasFetchedRef.current = true;
               fetchTransactions();
-              fetchCategories();
               return;
             }
           } catch (e) {
@@ -406,32 +409,12 @@ export default function TransactionsPage() {
       if (isAuthenticated || token) {
         hasFetchedRef.current = true;
         fetchTransactions();
-        fetchCategories();
       }
     };
 
     checkAuthAndFetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, token, router]);
-
-  const fetchCategories = useCallback(async () => {
-    if (!token) return;
-
-    try {
-      const response = await fetch('/api/categories', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setCategories(data);
-      }
-    } catch (error) {
-      console.error('Error fetching categories:', error);
-    }
-  }, [token]);
 
   const fetchTransactions = useCallback(async () => {
     try {

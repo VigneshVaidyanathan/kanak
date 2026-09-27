@@ -1,6 +1,7 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import {
   ColorPicker,
   FormInput,
@@ -24,6 +25,7 @@ import {
   Spinner,
 } from '@kanak/ui';
 import { IconX } from '@tabler/icons-react';
+import { useMutation } from 'convex/react';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 
@@ -39,7 +41,6 @@ interface CategoryFormModalProps {
     type: string;
     priority?: string;
   };
-  onSuccess: () => void;
 }
 
 type CategoryFormData = CreateCategoryInput;
@@ -64,9 +65,9 @@ export function CategoryFormModal({
   open,
   onOpenChange,
   category,
-  onSuccess,
 }: CategoryFormModalProps) {
-  const { token } = useAuthStore();
+  const createCategory = useMutation(api.categories.createCategory);
+  const updateCategory = useMutation(api.categories.updateCategory);
   const isEditing = !!category;
 
   const form = useForm<CategoryFormData>({
@@ -108,26 +109,15 @@ export function CategoryFormModal({
       const schema = isEditing ? updateCategorySchema : createCategorySchema;
       const validatedData = schema.parse(data);
 
-      const url = category
-        ? `/api/categories/${category.id}`
-        : '/api/categories';
-      const method = category ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(validatedData),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to save category');
+      if (category) {
+        await updateCategory({
+          id: category.id as Id<'categories'>,
+          ...validatedData,
+        });
+      } else {
+        await createCategory(validatedData as CreateCategoryInput);
       }
 
-      onSuccess();
       onOpenChange(false);
       form.reset();
     } catch (error: any) {

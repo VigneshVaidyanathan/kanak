@@ -1,7 +1,7 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
 import { Icon } from '@kanak/components';
+import { api } from '@kanak/convex/src/_generated/api';
 import { Category } from '@kanak/shared';
 import {
   Badge,
@@ -26,7 +26,8 @@ import {
   IconTrash,
   IconX,
 } from '@tabler/icons-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from 'convex/react';
+import { useMemo, useState } from 'react';
 import { CategoryFormModal } from './category-form-modal';
 import { DeleteCategoryModal } from './delete-category-modal';
 
@@ -63,9 +64,14 @@ const priorityColors: Record<string, string> = {
 };
 
 export function CategoriesSection() {
-  const { token } = useAuthStore();
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Live query: the modals' writes land here on their own, so there is nothing
+  // to refetch and no Strict-Mode duplicate-call guard to keep.
+  const categoriesResult = useQuery(api.categories.getCategoriesByUserId, {});
+  const loading = categoriesResult === undefined;
+  const categories = useMemo(
+    () => (categoriesResult ?? []) as Category[],
+    [categoriesResult]
+  );
   const [formModalOpen, setFormModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(
@@ -73,45 +79,6 @@ export function CategoriesSection() {
   );
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
-  const fetchingRef = useRef(false);
-
-  const fetchCategories = useCallback(async () => {
-    // Prevent duplicate calls (especially from React Strict Mode)
-    if (fetchingRef.current) {
-      return;
-    }
-
-    if (!token) {
-      return;
-    }
-
-    try {
-      fetchingRef.current = true;
-      setLoading(true);
-      const response = await fetch('/api/categories', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to fetch categories');
-      }
-
-      const data = await response.json();
-      setCategories(data);
-    } catch (error) {
-      console.error('Error fetching categories:', error);
-    } finally {
-      setLoading(false);
-      fetchingRef.current = false;
-    }
-  }, [token]);
-
-  useEffect(() => {
-    fetchCategories();
-  }, [fetchCategories]);
 
   const handleAdd = () => {
     setSelectedCategory(null);
@@ -126,14 +93,6 @@ export function CategoriesSection() {
   const handleDelete = (category: Category) => {
     setSelectedCategory(category);
     setDeleteModalOpen(true);
-  };
-
-  const handleFormSuccess = () => {
-    fetchCategories();
-  };
-
-  const handleDeleteSuccess = () => {
-    fetchCategories();
   };
 
   // Filter categories based on selected filters
@@ -510,14 +469,12 @@ export function CategoriesSection() {
         open={formModalOpen}
         onOpenChange={setFormModalOpen}
         category={selectedCategory || undefined}
-        onSuccess={handleFormSuccess}
       />
 
       <DeleteCategoryModal
         open={deleteModalOpen}
         onOpenChange={setDeleteModalOpen}
         category={selectedCategory}
-        onSuccess={handleDeleteSuccess}
       />
     </>
   );

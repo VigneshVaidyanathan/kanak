@@ -37,8 +37,9 @@ export const categorySchema = createCategorySchema.extend({
   id: z.string(),
   userId: z.string(),
   active: z.boolean(),
-  createdAt: z.date(),
-  updatedAt: z.date(),
+  // Epoch milliseconds, as Convex stores and returns them.
+  createdAt: z.number(),
+  updatedAt: z.number(),
 });
 
 export type Category = z.infer<typeof categorySchema>;

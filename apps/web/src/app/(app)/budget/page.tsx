@@ -11,6 +11,7 @@ import { MonthNavigation } from '@/components/budget/month-navigation';
 import { ProgressCell } from '@/components/budget/progress-cell';
 import { useAuthStore } from '@/store/auth-store';
 import { Icon, NotReadyForMobile } from '@kanak/components';
+import { api } from '@kanak/convex/src/_generated/api';
 import { Budget, Category, Transaction } from '@kanak/shared';
 import {
   Badge,
@@ -29,6 +30,7 @@ import {
   IconChevronDown,
   IconCopy,
 } from '@tabler/icons-react';
+import { useQuery } from 'convex/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -89,7 +91,11 @@ export default function BudgetPage() {
   const searchParams = useSearchParams();
   const { isAuthenticated, token, clearAuth } = useAuthStore();
   const [loading, setLoading] = useState(true);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const categoriesResult = useQuery(api.categories.getCategoriesByUserId, {});
+  const categories = useMemo(
+    () => (categoriesResult ?? []) as Category[],
+    [categoriesResult]
+  );
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [monthTransactions, setMonthTransactions] = useState<Transaction[]>([]);
   const [budgetRows, setBudgetRows] = useState<BudgetRow[]>([]);
@@ -112,26 +118,6 @@ export default function BudgetPage() {
     const [y, m] = selectedMonth.split('-').map(Number);
     return [y, m];
   }, [selectedMonth]);
-
-  // Fetch categories
-  const fetchCategories = useCallback(async () => {
-    if (!token) return;
-
-    try {
-      const response = await fetch('/api/categories', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setCategories(data);
-      }
-    } catch (error) {
-      console.error('Error fetching categories:', error);
-    }
-  }, [token]);
 
   // Fetch budgets
   const fetchBudgets = useCallback(async (): Promise<void> => {
@@ -388,11 +374,7 @@ export default function BudgetPage() {
                 setAuth(parsed.state.user, parsed.state.token);
               }
               setLoading(true);
-              await Promise.all([
-                fetchCategories(),
-                fetchBudgets(),
-                fetchMonthTransactions(),
-              ]);
+              await Promise.all([fetchBudgets(), fetchMonthTransactions()]);
               setLoading(false);
               return;
             }
@@ -409,11 +391,7 @@ export default function BudgetPage() {
 
       if (isAuthenticated || token) {
         setLoading(true);
-        await Promise.all([
-          fetchCategories(),
-          fetchBudgets(),
-          fetchMonthTransactions(),
-        ]);
+        await Promise.all([fetchBudgets(), fetchMonthTransactions()]);
         setLoading(false);
       }
     };

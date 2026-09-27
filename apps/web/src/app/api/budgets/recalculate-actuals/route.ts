@@ -1,6 +1,7 @@
 import { verifyAuth } from '@/lib/auth';
+import { convexAuthNextjsToken } from '@convex-dev/auth/nextjs/server';
 import {
-  getCategoriesByUserId,
+  getAuthedConvexClient,
   getConvexClient,
   getTransactionsByAccountingDateRange,
 } from '@kanak/api';
@@ -33,8 +34,17 @@ export async function POST(request: NextRequest) {
       monthEnd
     );
 
-    // Get all categories for the user via APIs package
-    const categories = await getCategoriesByUserId(authPayload.userId, false);
+    // Categories come straight from Convex now; the query takes its owner from
+    // the token rather than a userId argument.
+    const token = await convexAuthNextjsToken();
+    if (!token) {
+      throw new Error('No authentication token provided');
+    }
+    const authedConvex = await getAuthedConvexClient(token);
+    const categories = await authedConvex.query(
+      api.categories.getCategoriesByUserId,
+      { activeOnly: false }
+    );
 
     const categoryMap = new Map(
       categories.map((cat: { title: string }) => [cat.title, cat])

@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuthStore } from '@/store/auth-store';
+import { api } from '@kanak/convex/src/_generated/api';
 import {
   Category,
   GroupFilter,
@@ -14,7 +15,8 @@ import {
   IconPlus,
   IconTrash,
 } from '@tabler/icons-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useQuery } from 'convex/react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { DeleteTransactionRuleModal } from './delete-transaction-rule-modal';
 import { TransactionRuleModal } from './transaction-rule-modal';
@@ -26,7 +28,11 @@ function countFilters(groupFilter: GroupFilter): number {
 export function TransactionRulesSection() {
   const { token } = useAuthStore();
   const [rules, setRules] = useState<TransactionRule[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const categoriesResult = useQuery(api.categories.getCategoriesByUserId, {});
+  const categories = useMemo(
+    () => (categoriesResult ?? []) as Category[],
+    [categoriesResult]
+  );
   const [loading, setLoading] = useState(true);
   const [formModalOpen, setFormModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -71,34 +77,9 @@ export function TransactionRulesSection() {
     }
   }, [token]);
 
-  const fetchCategories = useCallback(async () => {
-    if (!token) {
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/categories', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to fetch categories');
-      }
-
-      const data = await response.json();
-      setCategories(data);
-    } catch (error) {
-      console.error('Error fetching categories:', error);
-    }
-  }, [token]);
-
   useEffect(() => {
     fetchRules();
-    fetchCategories();
-  }, [fetchRules, fetchCategories]);
+  }, [fetchRules]);
 
   // Cleanup timeout on unmount
   useEffect(() => {

@@ -1,4 +1,5 @@
 import { useAuthStore } from '@/store/auth-store';
+import { api } from '@kanak/convex/src/_generated/api';
 import {
   Badge,
   Card,
@@ -9,7 +10,8 @@ import {
   CardTitle,
 } from '@kanak/ui';
 import { IconTrendingDown, IconTrendingUp } from '@tabler/icons-react';
-import { useEffect, useState } from 'react';
+import { useQuery } from 'convex/react';
+import { useEffect, useMemo, useState } from 'react';
 
 interface BudgetStatsProps {
   totalIncome: number;
@@ -25,6 +27,13 @@ export function BudgetStats({
   month,
 }: BudgetStatsProps) {
   const { token } = useAuthStore();
+  const categories = useQuery(api.categories.getCategoriesByUserId, {});
+  // title -> type, for splitting the previous month's budgets into income and
+  // expense. Budgets still come from the REST route.
+  const categoryTypes = useMemo(
+    () => new Map((categories ?? []).map((cat) => [cat.title, cat.type])),
+    [categories]
+  );
   const [previousIncome, setPreviousIncome] = useState<number | null>(null);
   const [previousExpense, setPreviousExpense] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -60,46 +69,22 @@ export function BudgetStats({
         if (response.ok) {
           const budgets = await response.json();
 
-          // We need to distinguish between income and expense
-          // Fetch categories to properly calculate
-          const categoriesResponse = await fetch('/api/categories', {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
+          const prevIncome = budgets
+            .filter(
+              (b: { categoryId: string }) =>
+                categoryTypes.get(b.categoryId) === 'income'
+            )
+            .reduce((sum: number, b: { amount: number }) => sum + b.amount, 0);
 
-          if (categoriesResponse.ok) {
-            const categories = await categoriesResponse.json();
-            const categoryMap = new Map(
-              categories.map((cat: { title: string; type: string }) => [
-                cat.title,
-                cat.type,
-              ])
-            );
+          const prevExpense = budgets
+            .filter(
+              (b: { categoryId: string }) =>
+                categoryTypes.get(b.categoryId) === 'expense'
+            )
+            .reduce((sum: number, b: { amount: number }) => sum + b.amount, 0);
 
-            const prevIncome = budgets
-              .filter(
-                (b: { categoryId: string }) =>
-                  categoryMap.get(b.categoryId) === 'income'
-              )
-              .reduce(
-                (sum: number, b: { amount: number }) => sum + b.amount,
-                0
-              );
-
-            const prevExpense = budgets
-              .filter(
-                (b: { categoryId: string }) =>
-                  categoryMap.get(b.categoryId) === 'expense'
-              )
-              .reduce(
-                (sum: number, b: { amount: number }) => sum + b.amount,
-                0
-              );
-
-            setPreviousIncome(prevIncome);
-            setPreviousExpense(prevExpense);
-          }
+          setPreviousIncome(prevIncome);
+          setPreviousExpense(prevExpense);
         }
       } catch (error) {
         console.error('Error fetching previous month data:', error);
@@ -109,7 +94,7 @@ export function BudgetStats({
     };
 
     fetchPreviousMonthData();
-  }, [token, year, month]);
+  }, [token, year, month, categoryTypes]);
 
   const formatCurrency = (amount: number): string => {
     return new Intl.NumberFormat('en-IN', {
