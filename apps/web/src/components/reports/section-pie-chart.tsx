@@ -6,8 +6,6 @@ import {
   CardHeader,
   CardTitle,
   ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
 } from '@kanak/ui';
@@ -114,22 +112,21 @@ export function SectionPieChart({ sectionName, data }: SectionPieChartProps) {
                 />
               ))}
             </Pie>
-            <ChartLegend
-              content={
-                <ChartLegendContent
-                  payload={data.map((item) => ({
-                    value: item.name,
-                    dataKey: item.name,
-                    color: chartConfig[item.name]?.color,
-                    type: 'square',
-                  }))}
-                />
-              }
-              verticalAlign="bottom"
-              className="mt-4"
-            />
           </PieChart>
         </ChartContainer>
+        {/* ponytail: legend rendered as plain HTML, recharts <Legend> lays items
+            out on one absolutely-positioned row and they overlap when names are long. */}
+        <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-1.5 text-sm">
+          {data.map((item) => (
+            <div key={item.name} className="flex items-center gap-1.5">
+              <div
+                className="h-2 w-2 shrink-0 rounded-[2px]"
+                style={{ backgroundColor: chartConfig[item.name]?.color }}
+              />
+              {item.name}
+            </div>
+          ))}
+        </div>
       </CardContent>
     </Card>
   );

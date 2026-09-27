@@ -21,6 +21,15 @@ const isProtectedRoute = createRouteMatcher([
 ]);
 
 export default convexAuthNextjsMiddleware(async (request, { convexAuth }) => {
+  // Dev warmup requests (scripts/warm-routes.sh) must reach the page so it
+  // compiles; redirecting them here would leave the route cold.
+  if (
+    process.env.NODE_ENV === 'development' &&
+    request.headers.get('x-warmup') === '1'
+  ) {
+    return;
+  }
+
   const authed = await convexAuth.isAuthenticated();
 
   if (isSignInPage(request) && authed) {

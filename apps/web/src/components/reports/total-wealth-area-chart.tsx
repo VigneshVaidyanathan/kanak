@@ -63,7 +63,47 @@ export function TotalWealthAreaChart({
       label: 'Total Wealth',
       color: colorAt(0),
     },
+    forecast: {
+      label: 'Projected',
+      color: colorAt(0),
+    },
   };
+
+  // ponytail: least-squares straight line over the points on screen; swap for a
+  // real model if seasonality ever matters.
+  const chartData = (() => {
+    const points = data.map((d) => ({
+      ...d,
+      forecast: undefined as number | undefined,
+    }));
+    if (data.length < 2) return points;
+
+    const xs = data.map((d) => new Date(d.date).getTime());
+    const ys = data.map((d) => d.total);
+    const n = xs.length;
+    const meanX = xs.reduce((a, b) => a + b, 0) / n;
+    const meanY = ys.reduce((a, b) => a + b, 0) / n;
+    const varX = xs.reduce((sum, x) => sum + (x - meanX) ** 2, 0);
+    if (varX === 0) return points;
+    const slope =
+      xs.reduce((sum, x, i) => sum + (x - meanX) * (ys[i] - meanY), 0) / varX;
+    const intercept = meanY - slope * meanX;
+
+    // Anchor the dashed line to the last real point so the two series connect.
+    points[points.length - 1].forecast = ys[ys.length - 1];
+
+    const last = new Date(xs[xs.length - 1]);
+    for (let month = 1; month <= 2; month++) {
+      const next = new Date(last);
+      next.setMonth(next.getMonth() + month);
+      points.push({
+        date: next.toISOString(),
+        total: undefined as unknown as number,
+        forecast: slope * next.getTime() + intercept,
+      });
+    }
+    return points;
+  })();
 
   if (data.length === 0) {
     return (
@@ -96,7 +136,7 @@ export function TotalWealthAreaChart({
           config={chartConfig}
           className="h-full min-h-[200px] w-full flex-1"
         >
-          <AreaChart data={data}>
+          <AreaChart data={chartData}>
             <defs>
               <linearGradient id="fillTotal" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor={colorAt(0)} stopOpacity={0.35} />
@@ -143,6 +183,17 @@ export function TotalWealthAreaChart({
               strokeWidth={2}
               fill="url(#fillTotal)"
               dot={false}
+              activeDot={{ r: 4, stroke: 'var(--color-card)', strokeWidth: 2 }}
+            />
+            <Area
+              type="natural"
+              dataKey="forecast"
+              stroke={colorAt(0)}
+              strokeWidth={2}
+              strokeDasharray="5 5"
+              fill="none"
+              dot={false}
+              connectNulls
               activeDot={{ r: 4, stroke: 'var(--color-card)', strokeWidth: 2 }}
             />
           </AreaChart>

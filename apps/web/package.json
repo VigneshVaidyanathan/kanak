@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbo -p 4444",
+    "dev": "concurrently -n next,warm \"next dev --turbo -p 4444\" \"bash scripts/warm-routes.sh\"",
     "dev:webpack": "next dev -p 4444",
     "build": "next build",
     "start": "next start -p 4444",

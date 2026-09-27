@@ -1,6 +1,11 @@
 'use client';
 
 import { SectionPieChart } from '@/components/reports/section-pie-chart';
+import {
+  DateRangeFilter,
+  getPresetRange,
+  type TransactionDateRange,
+} from '@/components/transactions/date-range-filter';
 import { TotalWealthAreaChart } from '@/components/reports/total-wealth-area-chart';
 import { TotalWealthChart } from '@/components/reports/total-wealth-chart';
 import { TotalWealthStat } from '@/components/reports/total-wealth-stat';
@@ -61,16 +66,11 @@ interface WealthData {
 export default function ReportsPage() {
   const { isDesktop } = useDevice();
   const router = useRouter();
-  // The route this replaced defaulted to the last 12 months; that default is
-  // explicit here.
-  const { rangeStart, rangeEnd } = useMemo(() => {
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
-    const start = new Date();
-    start.setMonth(start.getMonth() - 12);
-    start.setHours(0, 0, 0, 0);
-    return { rangeStart: start.getTime(), rangeEnd: end.getTime() };
-  }, []);
+  const [dateRange, setDateRange] = useState<TransactionDateRange>(() =>
+    getPresetRange('this-year')
+  );
+  const rangeStart = dateRange.from.getTime();
+  const rangeEnd = dateRange.to.getTime();
   const sections = useQuery(api.wealth.getWealthSectionsByUserId, {});
   const entries = useQuery(api.wealth.getWealthEntriesByDateRange, {
     startDate: rangeStart,
@@ -311,6 +311,7 @@ export default function ReportsPage() {
           </h2>
         </div>
         <div className="flex items-center gap-2">
+          <DateRangeFilter value={dateRange} onChange={setDateRange} />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
