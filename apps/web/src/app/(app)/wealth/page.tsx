@@ -256,9 +256,15 @@ export default function WealthPage() {
     }
   }, [token, dateRange, formatDateKey, parseDateKey]);
 
+  // ponytail: refetch once per (token, range). StrictMode double-invokes effects
+  // in dev and setAuth re-runs this one, so the guard stops duplicate requests.
+  const lastFetchKeyRef = useRef<string | null>(null);
+
   // Initial data fetch
   useEffect(() => {
     const checkAuthAndFetch = () => {
+      const fetchKey = `${token ?? ''}|${dateRange}`;
+      if (lastFetchKeyRef.current === fetchKey) return;
       if (typeof window !== 'undefined') {
         const storedAuth = localStorage.getItem('auth-storage');
         if (storedAuth) {
@@ -269,6 +275,7 @@ export default function WealthPage() {
                 const { setAuth } = useAuthStore.getState();
                 setAuth(parsed.state.user, parsed.state.token);
               }
+              lastFetchKeyRef.current = fetchKey;
               fetchWealthData();
               return;
             }
@@ -284,6 +291,7 @@ export default function WealthPage() {
       }
 
       if (isAuthenticated || token) {
+        lastFetchKeyRef.current = fetchKey;
         fetchWealthData();
       }
     };

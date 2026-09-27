@@ -65,7 +65,7 @@ import {
   ColumnFilter as TanStackColumnFilter,
 } from '@tanstack/react-table';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DateRangeFilter,
   getPresetRange,
@@ -363,8 +363,14 @@ export default function TransactionsPage() {
     [router, searchParams, selectedMonth]
   );
 
+  // ponytail: one fetch per mount. StrictMode double-invokes effects in dev and
+  // setAuth re-runs this effect, so without the guard every load fires each
+  // request twice.
+  const hasFetchedRef = useRef(false);
+
   useEffect(() => {
     const checkAuthAndFetch = () => {
+      if (hasFetchedRef.current) return;
       if (typeof window !== 'undefined') {
         const storedAuth = localStorage.getItem('auth-storage');
         if (storedAuth) {
@@ -375,6 +381,7 @@ export default function TransactionsPage() {
                 const { setAuth } = useAuthStore.getState();
                 setAuth(parsed.state.user, parsed.state.token);
               }
+              hasFetchedRef.current = true;
               fetchTransactions();
               fetchCategories();
               fetchBankAccounts();
@@ -392,6 +399,7 @@ export default function TransactionsPage() {
       }
 
       if (isAuthenticated || token) {
+        hasFetchedRef.current = true;
         fetchTransactions();
         fetchCategories();
         fetchBankAccounts();
