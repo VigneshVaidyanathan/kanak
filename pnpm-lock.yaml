@@ -387,6 +387,9 @@ importers:
       '@kanak/llm':
         specifier: workspace:*
         version: link:../llm
+      '@kanak/shared':
+        specifier: workspace:*
+        version: link:../shared
       convex:
         specifier: ^1.11.0
         version: 1.39.1(react@18.3.1)

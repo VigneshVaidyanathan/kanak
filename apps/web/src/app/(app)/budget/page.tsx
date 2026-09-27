@@ -96,7 +96,6 @@ export default function BudgetPage() {
     () => (categoriesResult ?? []) as Category[],
     [categoriesResult]
   );
-  const [monthTransactions, setMonthTransactions] = useState<Transaction[]>([]);
   const [budgetRows, setBudgetRows] = useState<BudgetRow[]>([]);
   const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
 
@@ -127,27 +126,20 @@ export default function BudgetPage() {
     [budgetsResult]
   );
   const createOrUpdateBudget = useMutation(api.budgets.createOrUpdateBudget);
+  const recalculateActuals = useMutation(api.budgets.recalculateActuals);
 
-  // Fetch transactions for the selected month (by accounting date) from API
-  const fetchMonthTransactions = useCallback(async (): Promise<void> => {
-    if (!token) return;
-
-    const response = await fetch(
-      `/api/transactions/by-month?year=${year}&month=${month}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
-
-    if (response.ok) {
-      const data = await response.json();
-      setMonthTransactions(data);
-    } else {
-      setMonthTransactions([]);
+  // The month's transactions by accounting date, for the actuals column.
+  const monthTransactionsResult = useQuery(
+    api.transactions.getTransactionsByUserIdAndAccountingDateRange,
+    {
+      startAccountingDate: new Date(year, month - 1, 1).getTime(),
+      endAccountingDate: new Date(year, month, 0, 23, 59, 59).getTime(),
     }
-  }, [token, year, month]);
+  );
+  const monthTransactions = useMemo(
+    () => (monthTransactionsResult ?? []) as Transaction[],
+    [monthTransactionsResult]
+  );
 
   // Calculate actual spending per category from month transactions (from API, accounting date)
   const calculateActuals = useCallback((): Record<string, number> => {
@@ -308,27 +300,11 @@ export default function BudgetPage() {
 
     setLoading(true);
     try {
-      const response = await fetch('/api/budgets/recalculate-actuals', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          year,
-          month,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to recalculate actuals');
-      }
+      await recalculateActuals({ year, month });
 
       toast.success('Actuals recalculated successfully');
 
       // Budgets are a live query; only the month's transactions need refetching.
-      await fetchMonthTransactions();
     } catch (error: unknown) {
       const err = error as { message?: string };
       console.error('Error recalculating actuals:', error);
@@ -336,7 +312,7 @@ export default function BudgetPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, year, month, fetchMonthTransactions]);
+  }, [token, year, month, recalculateActuals]);
 
   // Initial data fetch (page-level loader)
   useEffect(() => {
@@ -352,7 +328,6 @@ export default function BudgetPage() {
                 setAuth(parsed.state.user, parsed.state.token);
               }
               setLoading(true);
-              await fetchMonthTransactions();
               setLoading(false);
               return;
             }
@@ -369,7 +344,6 @@ export default function BudgetPage() {
 
       if (isAuthenticated || token) {
         setLoading(true);
-        await fetchMonthTransactions();
         setLoading(false);
       }
     };
@@ -403,11 +377,10 @@ export default function BudgetPage() {
 
     const fetchData = async (): Promise<void> => {
       setLoading(true);
-      await fetchMonthTransactions();
       setLoading(false);
     };
     fetchData();
-  }, [year, month, token, categories.length, fetchMonthTransactions]);
+  }, [year, month, token, categories.length]);
 
   // Create category map for quick lookup
   const categoryMap = useMemo(() => {

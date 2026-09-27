@@ -1,5 +1,7 @@
 'use client';
 
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import { Transaction } from '@kanak/shared';
 import {
   Button,
@@ -11,46 +13,31 @@ import {
   Textarea,
 } from '@kanak/ui';
 import { IconPencil } from '@tabler/icons-react';
+import { useMutation } from 'convex/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
 interface NotesCellProps {
   transaction: Transaction;
-  token: string | null;
   onUpdate: (id: string, updates: Partial<Transaction>) => void;
 }
 
-export function NotesCell({ transaction, token, onUpdate }: NotesCellProps) {
+export function NotesCell({ transaction, onUpdate }: NotesCellProps) {
+  const updateTransaction = useMutation(api.transactions.updateTransaction);
   const [isOpen, setIsOpen] = useState(false);
   const [notes, setNotes] = useState(transaction.notes || '');
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
-    if (!token) {
-      toast.error('Authentication required');
-      return;
-    }
-
     setIsSaving(true);
     try {
-      const response = await fetch(`/api/transactions/${transaction.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ notes: notes || null }),
+      const updatedTransaction = await updateTransaction({
+        id: transaction.id as Id<'transactions'>,
+        notes: notes || '',
       });
-
-      if (response.ok) {
-        const updatedTransaction = await response.json();
-        onUpdate(transaction.id, updatedTransaction);
-        setIsOpen(false);
-        toast.success('Notes updated successfully');
-      } else {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to update notes');
-      }
+      onUpdate(transaction.id, updatedTransaction);
+      setIsOpen(false);
+      toast.success('Notes updated successfully');
     } catch (error: any) {
       console.error('Error updating notes:', error);
       toast.error(error.message || 'Failed to update notes');

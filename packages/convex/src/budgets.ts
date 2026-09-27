@@ -227,3 +227,96 @@ export const updateBudgetActual = mutation({
     return toBudget((await ctx.db.get(budgetId))!);
   },
 });
+
+/**
+ * Recompute each category's actual spend for a month from its transactions.
+ *
+ * Was a REST route that fetched transactions and categories over the network,
+ * computed in Node, then issued one mutation per category. All three sides are
+ * Convex now, so it is a single transaction.
+ */
+export const recalculateActuals = mutation({
+  args: { year: v.number(), month: v.number() },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+
+    const monthStart = new Date(args.year, args.month - 1, 1).getTime();
+    const monthEnd = new Date(args.year, args.month, 0, 23, 59, 59).getTime();
+
+    const transactions = await ctx.db
+      .query('transactions')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .collect();
+
+    const categories = await ctx.db
+      .query('categories')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .collect();
+
+    const known = new Set(categories.map((category) => category.title));
+
+    const actuals = new Map<string, number>();
+    for (const transaction of transactions) {
+      if (transaction.isDeleted === true || transaction.isInternal === true) {
+        continue;
+      }
+      if (
+        transaction.accountingDate < monthStart ||
+        transaction.accountingDate > monthEnd
+      ) {
+        continue;
+      }
+      const category = transaction.category;
+      if (!category || !known.has(category)) {
+        continue;
+      }
+      // Debit is spend, credit offsets it.
+      const contribution =
+        transaction.type === 'debit' ? transaction.amount : -transaction.amount;
+      actuals.set(category, (actuals.get(category) ?? 0) + contribution);
+    }
+
+    const budgets = await ctx.db
+      .query('budgets')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .collect();
+
+    const monthBudgets = budgets.filter(
+      (b) => b.year === args.year && b.month === args.month
+    );
+
+    // A category that had transactions last run and none now must go back to
+    // zero, not keep its stale actual.
+    for (const budget of monthBudgets) {
+      if (!actuals.has(budget.categoryId)) {
+        actuals.set(budget.categoryId, 0);
+      }
+    }
+
+    const now = Date.now();
+    const byCategory = new Map(monthBudgets.map((b) => [b.categoryId, b]));
+
+    for (const [categoryId, total] of actuals) {
+      const actual = Math.abs(total);
+      const existing = byCategory.get(categoryId);
+
+      if (existing) {
+        await ctx.db.patch(existing._id, { actual, updatedAt: now });
+        continue;
+      }
+
+      await ctx.db.insert('budgets', {
+        userId,
+        categoryId,
+        month: args.month,
+        year: args.year,
+        amount: 0,
+        actual,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return { categories: actuals.size };
+  },
+});

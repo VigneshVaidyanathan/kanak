@@ -1,12 +1,14 @@
 'use client';
 
 import { parseDateByFormat } from '@/lib/date-parser';
-import { useAuthStore } from '@/store/auth-store';
+import {
+  storeCsvFile,
+  upsertTransactionsChunked,
+} from '@/lib/transaction-import';
 import {
   type SampleTransaction,
   useCsvUploadStore,
 } from '@/store/csv-upload-store';
-import { useTransactionsStore } from '@/store/transactions-store';
 import { DataTable, DataTableColumnHeader } from '@kanak/components';
 import { bulkTransactionsSchema, createTransactionSchema } from '@kanak/shared';
 import { Badge, Button, Spinner } from '@kanak/ui';
@@ -16,7 +18,9 @@ import {
   IconCheck,
   IconCurrencyRupee,
 } from '@tabler/icons-react';
+import { api } from '@kanak/convex/src/_generated/api';
 import { ColumnDef } from '@tanstack/react-table';
+import { useMutation } from 'convex/react';
 import { useMemo, useState } from 'react';
 
 export const VerifyTransactions = ({
@@ -31,8 +35,15 @@ export const VerifyTransactions = ({
   const [isAdded, setIsAdded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [transactionsAdded, setTransactionsAdded] = useState(0);
-  const { token } = useAuthStore();
-  const { setTransactions } = useTransactionsStore();
+  const upsertTransactionsBatch = useMutation(
+    api.transactions.upsertTransactionsBatch
+  );
+  const generateUploadUrl = useMutation(
+    api.transactionUploads.generateUploadUrl
+  );
+  const createTransactionUpload = useMutation(
+    api.transactionUploads.createTransactionUpload
+  );
   const { dateFormat, fileName, fileSize, rawContent } = useCsvUploadStore();
 
   const columns = useMemo<ColumnDef<SampleTransaction>[]>(
@@ -194,56 +205,33 @@ export const VerifyTransactions = ({
         validatedTransactions
       );
 
-      const response = await fetch('/api/transactions/upload/process', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ transactions: bulkValidatedTransactions }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to process CSV');
-      }
-
-      const result = await response.json();
-      const addedCount = result.created || result.total || transactions.length;
+      const { created, total } = await upsertTransactionsChunked(
+        upsertTransactionsBatch,
+        bulkValidatedTransactions
+      );
+      const addedCount = created || total || transactions.length;
       setTransactionsAdded(addedCount);
 
-      // Record the upload in the database
       if (fileName && fileSize !== undefined) {
         try {
-          await fetch('/api/transactions/upload/record', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              fileName,
-              fileSize,
-              totalRows: addedCount,
-              csvContent: rawContent,
-            }),
+          const storageId = rawContent
+            ? await storeCsvFile(generateUploadUrl, rawContent)
+            : undefined;
+          await createTransactionUpload({
+            storageId,
+            fileName,
+            fileSize,
+            totalRows: addedCount,
+            uploadedAt: Date.now(),
           });
         } catch (error) {
-          // Don't block user flow if recording fails
+          // Don't block the user's flow if recording fails.
           console.error('Failed to record upload:', error);
         }
       }
 
-      // Refresh transactions list
-      const transactionsResponse = await fetch('/api/transactions', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (transactionsResponse.ok) {
-        const transactionsData = await transactionsResponse.json();
-        setTransactions(transactionsData);
-      }
+      // The transactions page reads a live query, so the import shows up there
+      // without anything being pushed to it.
 
       setIsAdded(true);
     } catch (error) {

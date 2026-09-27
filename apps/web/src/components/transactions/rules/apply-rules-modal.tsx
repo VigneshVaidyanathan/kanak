@@ -1,6 +1,7 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import { Transaction } from '@kanak/shared';
 import {
   Button,
@@ -12,6 +13,7 @@ import {
   DialogTitle,
   Spinner,
 } from '@kanak/ui';
+import { useMutation } from 'convex/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -34,7 +36,7 @@ export function ApplyRulesModal({
   selectedTransactions,
   onSuccess,
 }: ApplyRulesModalProps) {
-  const { token } = useAuthStore();
+  const applyRules = useMutation(api.transactions.applyRules);
   const [loading, setLoading] = useState(false);
   const [checkingRules, setCheckingRules] = useState(false);
   const [previewResult, setPreviewResult] = useState<PreviewResult | null>(
@@ -45,11 +47,6 @@ export function ApplyRulesModal({
   );
 
   const handleCheckRules = async () => {
-    if (!token) {
-      toast.error('Authentication required');
-      return;
-    }
-
     if (selectedTransactions.length === 0) {
       toast.error('No transactions selected');
       return;
@@ -58,35 +55,20 @@ export function ApplyRulesModal({
     setCheckingRules(true);
 
     try {
-      const response = await fetch('/api/transactions/apply-rules', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          transactionIds: selectedTransactions.map((t) => t.id),
-          preview: true,
-        }),
+      const result = await applyRules({
+        transactionIds: selectedTransactions.map(
+          (t) => t.id as Id<'transactions'>
+        ),
+        preview: true,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to check rules');
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
-        setPreviewResult({
-          updated: result.updated,
-          skipped: result.skipped,
-          ruleBreakdown: result.ruleBreakdown || [],
-        });
-        setStep('preview');
-      } else {
-        throw new Error(result.error || 'Failed to check rules');
-      }
+      setPreviewResult({
+        updated: result.updated,
+        skipped: result.skipped,
+        // The mutation keys its breakdown by rule id; the list just needs values.
+        ruleBreakdown: Object.values(result.ruleBreakdown ?? {}),
+      });
+      setStep('preview');
     } catch (error: any) {
       console.error('Error checking rules:', error);
       toast.error(error.message || 'Failed to check rules');
@@ -96,49 +78,25 @@ export function ApplyRulesModal({
   };
 
   const handleApplyRules = async () => {
-    if (!token) {
-      toast.error('Authentication required');
-      return;
-    }
-
     setStep('applying');
     setLoading(true);
 
     try {
-      const response = await fetch('/api/transactions/apply-rules', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          transactionIds: selectedTransactions.map((t) => t.id),
-          preview: false,
-        }),
+      const result = await applyRules({
+        transactionIds: selectedTransactions.map(
+          (t) => t.id as Id<'transactions'>
+        ),
+        preview: false,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to apply rules');
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
-        toast.success(
-          `Rules applied successfully! Updated ${result.updated} transaction(s), skipped ${result.skipped} transaction(s).`
-        );
-        if (result.errors && result.errors.length > 0) {
-          console.error('Some transactions failed to update:', result.errors);
-        }
-        onSuccess?.();
-        onOpenChange(false);
-        // Reset state for next time
-        setStep('initial');
-        setPreviewResult(null);
-      } else {
-        throw new Error(result.error || 'Failed to apply rules');
-      }
+      toast.success(
+        `Rules applied successfully! Updated ${result.updated} transaction(s), skipped ${result.skipped} transaction(s).`
+      );
+      onSuccess?.();
+      onOpenChange(false);
+      // Reset state for next time
+      setStep('initial');
+      setPreviewResult(null);
     } catch (error: any) {
       console.error('Error applying rules:', error);
       toast.error(error.message || 'Failed to apply rules');

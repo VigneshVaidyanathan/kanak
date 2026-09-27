@@ -1,6 +1,9 @@
 'use client';
 
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import { Category, Transaction } from '@kanak/shared';
+import { useMutation } from 'convex/react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { CategoryCombobox } from './category-combobox';
@@ -8,16 +11,15 @@ import { CategoryCombobox } from './category-combobox';
 interface CategoryCellProps {
   transaction: Transaction;
   categories: Category[];
-  token: string | null;
   onUpdate: (id: string, updates: Partial<Transaction>) => void;
 }
 
 export function CategoryCell({
   transaction,
   categories,
-  token,
   onUpdate,
 }: CategoryCellProps) {
+  const updateTransaction = useMutation(api.transactions.updateTransaction);
   const [localCategory, setLocalCategory] = useState<string | undefined>(
     transaction.category || undefined
   );
@@ -35,37 +37,16 @@ export function CategoryCell({
       // ponytail: no debounce — picking a category is one discrete click,
       // debouncing it only added latency.
       void (async () => {
-        if (!token) {
-          console.error('No authentication token available');
-          setLocalCategory(transaction.category || undefined);
-          return;
-        }
-
         try {
-          const response = await fetch(`/api/transactions/${transaction.id}`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ category: categoryTitle || null }),
+          const updatedTransaction = await updateTransaction({
+            id: transaction.id as Id<'transactions'>,
+            category: categoryTitle || '',
           });
-
-          if (response.ok) {
-            const updatedTransaction = await response.json();
-            onUpdate(transaction.id, updatedTransaction);
-            toast.success(
-              'Transaction updated successfully and category set to ' +
-                categoryTitle
-            );
-          } else {
-            console.error('Failed to update transaction category');
-            // Revert local state on error
-            setLocalCategory(transaction.category || undefined);
-            toast.error('Failed to update transaction', {
-              description: 'Please try again',
-            });
-          }
+          onUpdate(transaction.id, updatedTransaction);
+          toast.success(
+            'Transaction updated successfully and category set to ' +
+              categoryTitle
+          );
         } catch (error) {
           console.error('Error updating transaction category:', error);
           // Revert local state on error
@@ -76,7 +57,7 @@ export function CategoryCell({
         }
       })();
     },
-    [transaction.id, transaction.category, token, onUpdate]
+    [transaction.id, transaction.category, updateTransaction, onUpdate]
   );
 
   return (

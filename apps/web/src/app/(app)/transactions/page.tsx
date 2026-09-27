@@ -13,7 +13,6 @@ import {
 } from '@/components/transactions/rules';
 import { UploadCsvModal } from '@/components/transactions/upload-csv';
 import { useAuthStore } from '@/store/auth-store';
-import { useTransactionsStore } from '@/store/transactions-store';
 import { api } from '@kanak/convex/src/_generated/api';
 import {
   DataTable,
@@ -75,8 +74,14 @@ export default function TransactionsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAuthenticated, token, clearAuth } = useAuthStore();
-  const { transactions, setTransactions, updateTransaction } =
-    useTransactionsStore();
+  const transactionsResult = useQuery(
+    api.transactions.getTransactionsByUserId,
+    {}
+  );
+  const transactions = useMemo(
+    () => (transactionsResult ?? []) as Transaction[],
+    [transactionsResult]
+  );
   const [loading, setLoading] = useState(true);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const categoriesResult = useQuery(api.categories.getCategoriesByUserId, {});
@@ -392,7 +397,6 @@ export default function TransactionsPage() {
                 setAuth(parsed.state.user, parsed.state.token);
               }
               hasFetchedRef.current = true;
-              fetchTransactions();
               return;
             }
           } catch (e) {
@@ -408,36 +412,12 @@ export default function TransactionsPage() {
 
       if (isAuthenticated || token) {
         hasFetchedRef.current = true;
-        fetchTransactions();
       }
     };
 
     checkAuthAndFetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, token, router]);
-
-  const fetchTransactions = useCallback(async () => {
-    try {
-      const response = await fetch('/api/transactions', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (response.status === 401) {
-        clearAuth();
-        router.push('/auth');
-        return;
-      }
-
-      const data = await response.json();
-      setTransactions(data);
-    } catch (error) {
-      console.error('Error fetching transactions:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [token, clearAuth, router, setTransactions, setLoading]);
 
   const handleDeleteTransaction = useCallback((transaction: Transaction) => {
     // TODO: Implement delete functionality
@@ -453,8 +433,7 @@ export default function TransactionsPage() {
 
   const handleDeleteSuccess = useCallback(() => {
     setSelectedTransactions([]);
-    fetchTransactions();
-  }, [fetchTransactions]);
+  }, []);
 
   const handleEditTransaction = useCallback((transaction: Transaction) => {
     setSelectedTransactionForEdit(transaction);
@@ -462,10 +441,9 @@ export default function TransactionsPage() {
   }, []);
 
   const handleEditModalSuccess = useCallback(() => {
-    fetchTransactions();
     setEditModalOpen(false);
     setSelectedTransactionForEdit(null);
-  }, [fetchTransactions]);
+  }, []);
 
   // Extract unique options for filters
   const categoryOptions = useMemo(() => {
@@ -626,20 +604,17 @@ export default function TransactionsPage() {
     }
   }, [selectedMonth, transactionsByMonth, viewType]);
 
-  // Custom update handler for month view that updates local state without full refresh
+  // Month view keeps its own list, so a cell edit has to be reflected there;
+  // the main list is a live query and updates itself.
   const updateTransactionForMonthView = useCallback(
     (id: string, updates: Partial<Transaction>) => {
-      // Update the store (for global state)
-      updateTransaction(id, updates);
-
-      // Update the local month view state directly (to avoid full refresh)
       if (viewType === 'month') {
         setMonthViewTransactions((prev) =>
           prev.map((t) => (t.id === id ? { ...t, ...updates } : t))
         );
       }
     },
-    [updateTransaction, viewType]
+    [viewType]
   );
 
   // Summary section renderer
@@ -1043,12 +1018,7 @@ export default function TransactionsPage() {
             <BankAccountCell
               transaction={row.original}
               bankAccounts={bankAccounts}
-              token={token}
-              onUpdate={
-                viewType === 'month'
-                  ? updateTransactionForMonthView
-                  : updateTransaction
-              }
+              onUpdate={updateTransactionForMonthView}
             />
           );
         },
@@ -1076,12 +1046,7 @@ export default function TransactionsPage() {
             <CategoryCell
               transaction={row.original}
               categories={categories}
-              token={token}
-              onUpdate={
-                viewType === 'month'
-                  ? updateTransactionForMonthView
-                  : updateTransaction
-              }
+              onUpdate={updateTransactionForMonthView}
             />
           );
         },
@@ -1160,12 +1125,7 @@ export default function TransactionsPage() {
           return (
             <NotesCell
               transaction={row.original}
-              token={token}
-              onUpdate={
-                viewType === 'month'
-                  ? updateTransactionForMonthView
-                  : updateTransaction
-              }
+              onUpdate={updateTransactionForMonthView}
             />
           );
         },
@@ -1194,12 +1154,7 @@ export default function TransactionsPage() {
           return (
             <OmitCell
               transaction={row.original}
-              token={token}
-              onUpdate={
-                viewType === 'month'
-                  ? updateTransactionForMonthView
-                  : updateTransaction
-              }
+              onUpdate={updateTransactionForMonthView}
             />
           );
         },
@@ -1263,9 +1218,7 @@ export default function TransactionsPage() {
       categories,
       bankAccounts,
       token,
-      updateTransaction,
       updateTransactionForMonthView,
-      viewType,
       categoryFilterFn,
       reportsFilterFn,
     ]
@@ -1439,7 +1392,6 @@ export default function TransactionsPage() {
         <UploadCsvModal
           onClose={() => {
             setUploadModalOpen(false);
-            fetchTransactions();
           }}
         />
       )}
@@ -1466,9 +1418,7 @@ export default function TransactionsPage() {
           setApplyRulesModalOpen(open);
         }}
         selectedTransactions={selectedTransactions}
-        onSuccess={() => {
-          fetchTransactions();
-        }}
+        onSuccess={() => {}}
       />
 
       <EditTransactionModal

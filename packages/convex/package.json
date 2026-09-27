@@ -48,6 +48,7 @@
     "@auth/core": "0.41.3",
     "@convex-dev/auth": "^0.0.95",
     "@kanak/llm": "workspace:*",
+    "@kanak/shared": "workspace:*",
     "convex": "^1.11.0"
   },
   "devDependencies": {

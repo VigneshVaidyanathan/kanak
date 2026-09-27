@@ -1,6 +1,5 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
 import { api } from '@kanak/convex/src/_generated/api';
 import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import {
@@ -78,15 +77,13 @@ export function TransactionRuleModal({
   categories,
   onSuccess,
 }: TransactionRuleModalProps) {
-  // `token` is still needed for the /apply route, which stays REST until the
-  // transactions domain moves.
-  const { token } = useAuthStore();
   const createTransactionRule = useMutation(
     api.transactionRules.createTransactionRule
   );
   const updateTransactionRule = useMutation(
     api.transactionRules.updateTransactionRule
   );
+  const applyRules = useMutation(api.transactions.applyRules);
 
   const saveRule = async () => {
     if (rule) {
@@ -218,7 +215,7 @@ export function TransactionRuleModal({
   }, [title, hasFilter, action]);
 
   const handleSave = async () => {
-    if (!canSave || !token) {
+    if (!canSave) {
       return;
     }
 
@@ -247,7 +244,7 @@ export function TransactionRuleModal({
   };
 
   const handleSaveAndRun = async () => {
-    if (!canSave || !token) {
+    if (!canSave) {
       return;
     }
 
@@ -261,25 +258,10 @@ export function TransactionRuleModal({
         throw new Error('Failed to get rule ID after saving');
       }
 
-      // Then, apply the rule to all transactions
-      // Keep loading state true while applying
-      const applyResponse = await fetch(
-        `/api/transaction-rules/${ruleId}/apply`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (!applyResponse.ok) {
-        const error = await applyResponse.json();
-        throw new Error(error.error || 'Failed to apply rule');
-      }
-
-      const result = await applyResponse.json();
+      // Then apply just this rule, across every transaction.
+      const result = await applyRules({
+        ruleId: ruleId as Id<'transaction_rules'>,
+      });
 
       toast.success(
         `Rule ${rule ? 'updated' : 'created'} and applied successfully! Updated ${result.updated} transaction(s).`

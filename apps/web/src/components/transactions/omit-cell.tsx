@@ -1,18 +1,21 @@
 'use client';
 
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import { Transaction } from '@kanak/shared';
 import { Switch } from '@kanak/ui';
 import { cn } from '@kanak/ui/lib/utils';
+import { useMutation } from 'convex/react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 interface OmitCellProps {
   transaction: Transaction;
-  token: string | null;
   onUpdate: (id: string, updates: Partial<Transaction>) => void;
 }
 
-export function OmitCell({ transaction, token, onUpdate }: OmitCellProps) {
+export function OmitCell({ transaction, onUpdate }: OmitCellProps) {
+  const updateTransaction = useMutation(api.transactions.updateTransaction);
   const [isInternal, setIsInternal] = useState(transaction.isInternal || false);
 
   // Update local state when transaction data changes
@@ -27,29 +30,12 @@ export function OmitCell({ transaction, token, onUpdate }: OmitCellProps) {
     // Set new timeout for API call (1 second debounce)
     // ponytail: no debounce — this is one discrete click.
     void (async () => {
-      if (!token) {
-        console.error('No authentication token available');
-        setIsInternal(transaction.isInternal || false);
-        return;
-      }
-
       try {
-        const response = await fetch(`/api/transactions/${transaction.id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ isInternal: !checked }),
+        const updatedTransaction = await updateTransaction({
+          id: transaction.id as Id<'transactions'>,
+          isInternal: !checked,
         });
-
-        if (response.ok) {
-          const updatedTransaction = await response.json();
-          onUpdate(transaction.id, updatedTransaction);
-        } else {
-          const error = await response.json();
-          throw new Error(error.error || 'Failed to update transaction');
-        }
+        onUpdate(transaction.id, updatedTransaction);
       } catch (error: any) {
         console.error('Error updating transaction:', error);
         toast.error(error.message || 'Failed to update transaction');

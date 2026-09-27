@@ -1,5 +1,7 @@
 'use client';
 
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import { BankAccount, Transaction } from '@kanak/shared';
 import {
   Button,
@@ -11,22 +13,22 @@ import {
 } from '@kanak/ui';
 import { IconChevronDown } from '@tabler/icons-react';
 import { Check } from 'lucide-react';
+import { useMutation } from 'convex/react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 interface BankAccountCellProps {
   transaction: Transaction;
   bankAccounts: BankAccount[];
-  token: string | null;
   onUpdate: (id: string, updates: Partial<Transaction>) => void;
 }
 
 export function BankAccountCell({
   transaction,
   bankAccounts,
-  token,
   onUpdate,
 }: BankAccountCellProps) {
+  const updateTransaction = useMutation(api.transactions.updateTransaction);
   const [localBankAccount, setLocalBankAccount] = useState<string | undefined>(
     transaction.bankAccount || undefined
   );
@@ -44,37 +46,16 @@ export function BankAccountCell({
       // Set new timeout for API call
       // ponytail: no debounce — this is one discrete click.
       void (async () => {
-        if (!token) {
-          console.error('No authentication token available');
-          setLocalBankAccount(transaction.bankAccount || undefined);
-          return;
-        }
-
         try {
-          const response = await fetch(`/api/transactions/${transaction.id}`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ bankAccount: accountName || null }),
+          const updatedTransaction = await updateTransaction({
+            id: transaction.id as Id<'transactions'>,
+            bankAccount: accountName || '',
           });
-
-          if (response.ok) {
-            const updatedTransaction = await response.json();
-            onUpdate(transaction.id, updatedTransaction);
-            toast.success(
-              'Transaction updated successfully and bank account set to ' +
-                accountName
-            );
-          } else {
-            console.error('Failed to update transaction bank account');
-            // Revert local state on error
-            setLocalBankAccount(transaction.bankAccount || undefined);
-            toast.error('Failed to update transaction', {
-              description: 'Please try again',
-            });
-          }
+          onUpdate(transaction.id, updatedTransaction);
+          toast.success(
+            'Transaction updated successfully and bank account set to ' +
+              accountName
+          );
         } catch (error) {
           console.error('Error updating transaction bank account:', error);
           // Revert local state on error
@@ -85,7 +66,7 @@ export function BankAccountCell({
         }
       })();
     },
-    [transaction.id, transaction.bankAccount, token, onUpdate]
+    [transaction.id, transaction.bankAccount, updateTransaction, onUpdate]
   );
 
   const selectedBankAccount = bankAccounts.find(

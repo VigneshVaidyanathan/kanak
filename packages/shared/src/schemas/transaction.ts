@@ -60,8 +60,13 @@ export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;
 export const transactionSchema = createTransactionSchema.extend({
   id: z.string(),
   userId: z.string(),
-  createdAt: z.date(),
-  updatedAt: z.date(),
+  // Epoch milliseconds on the way out, as Convex stores and returns them.
+  // `createTransactionSchema` keeps Date on the way in, because it parses
+  // CSV date strings.
+  date: z.number(),
+  accountingDate: z.number().optional(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
 });
 
 export type Transaction = z.infer<typeof transactionSchema>;
