@@ -1,7 +1,5 @@
 import { api } from '@kanak/convex/src/_generated/api';
-import type { Id } from '@kanak/convex/src/_generated/dataModel';
-import crypto from 'crypto';
-import { getConvexClient } from './db';
+import { getAuthedConvexClient } from './db';
 
 export interface AuthPayload {
   userId: string;
@@ -9,44 +7,24 @@ export interface AuthPayload {
   role: string;
 }
 
-// Generate a secure random token
-function generateSecureToken(): string {
-  return crypto.randomBytes(32).toString('hex');
-}
-
-export async function generateToken(payload: AuthPayload): Promise<string> {
-  const convex = await getConvexClient();
-  const token = generateSecureToken();
-  const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
-
-  await convex.mutation(api.auth.createSession, {
-    userId: payload.userId as Id<'users'>,
-    token,
-    expiresAt,
-  });
-
-  return token;
-}
-
+/**
+ * Resolves a Convex Auth JWT to the user it belongs to.
+ *
+ * The JWT is verified by Convex itself (against the deployment's JWKS), so this
+ * only has to ask Convex who the caller is. Sessions are Convex Auth's
+ * concern now; nothing here issues or stores tokens.
+ */
 export async function verifyToken(token: string): Promise<AuthPayload> {
-  const convex = await getConvexClient();
-  const result = await convex.query(api.auth.getSessionByToken, {
-    token,
-  });
+  const convex = await getAuthedConvexClient(token);
+  const viewer = await convex.query(api.users.viewer, {});
 
-  if (!result || !result.user) {
+  if (!viewer) {
     throw new Error('Invalid or expired token');
   }
 
   return {
-    userId: result.user.id,
-    email: result.user.email,
-    role: result.user.role,
+    userId: viewer.id,
+    email: viewer.email ?? '',
+    role: viewer.role ?? 'user',
   };
-}
-
-export function decodeToken(token: string): AuthPayload | null {
-  // For decode, we still need to verify to get the payload
-  // This is a simplified version - in production, you might want to store token data differently
-  return null;
 }

@@ -1,14 +1,29 @@
+import { authTables } from '@convex-dev/auth/server';
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
 
 export default defineSchema({
+  ...authTables,
+
+  // authTables.users, inlined so it can carry our own fields. The table name
+  // must stay `users`: ten tables hold v.id('users') and Convex ids are
+  // per-table, so renaming it would orphan every row.
   users: defineTable({
-    email: v.string(),
-    name: v.string(),
-    password: v.string(),
-    role: v.string(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
+    // Convex Auth's own fields.
+    name: v.optional(v.string()),
+    image: v.optional(v.string()),
+    email: v.optional(v.string()),
+    emailVerificationTime: v.optional(v.number()),
+    phone: v.optional(v.string()),
+    phoneVerificationTime: v.optional(v.number()),
+    isAnonymous: v.optional(v.boolean()),
+    // Ours. Optional because Convex Auth inserts users without them.
+    role: v.optional(v.string()),
+    // Pre-Convex-Auth bcrypt hash. Read once by the authAccounts backfill,
+    // then cleared; remove this field after the backfill has run everywhere.
+    password: v.optional(v.string()),
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
   }).index('by_email', ['email']),
 
   transactions: defineTable({

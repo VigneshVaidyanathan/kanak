@@ -14,9 +14,11 @@ const nextConfig = {
   images: {
     formats: ['image/webp', 'image/avif'],
   },
-  compiler: {
-    removeConsole: process.env.NODE_ENV === 'production',
-  },
+  // Spread rather than set: Turbopack refuses to start if `compiler` is
+  // present at all, even set to false, so dev must not define it.
+  ...(process.env.NODE_ENV === 'production'
+    ? { compiler: { removeConsole: true } }
+    : {}),
   poweredByHeader: false,
   // Dev only: keep compiled routes in memory instead of disposing them after
   // 15s, so revisiting a route does not recompile it from scratch.
