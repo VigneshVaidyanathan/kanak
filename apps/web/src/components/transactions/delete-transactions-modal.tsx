@@ -1,6 +1,7 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import { Transaction } from '@kanak/shared';
 import {
   Button,
@@ -12,6 +13,7 @@ import {
   Spinner,
 } from '@kanak/ui';
 import { IconX } from '@tabler/icons-react';
+import { useMutation } from 'convex/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -28,34 +30,19 @@ export function DeleteTransactionsModal({
   transactions,
   onSuccess,
 }: DeleteTransactionsModalProps) {
-  const { token } = useAuthStore();
+  const deleteTransactions = useMutation(api.transactions.deleteTransactions);
   const [loading, setLoading] = useState(false);
 
   const handleDelete = async () => {
-    if (transactions.length === 0 || !token) return;
+    if (transactions.length === 0) return;
 
     try {
       setLoading(true);
-      const response = await fetch('/api/transactions', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          ids: transactions.map((t) => t.id),
-        }),
+      const result = await deleteTransactions({
+        ids: transactions.map((t) => t.id as Id<'transactions'>),
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete transactions');
-      }
-
-      const result = await response.json();
-      toast.success(
-        `Successfully deleted ${result.deletedCount} transaction(s)`
-      );
+      toast.success(`Successfully deleted ${result.count} transaction(s)`);
       onSuccess();
       onOpenChange(false);
     } catch (error: any) {

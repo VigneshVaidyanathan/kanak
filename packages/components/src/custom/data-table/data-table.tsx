@@ -44,6 +44,7 @@ export interface DataTableProps<TData, TArgs extends any[]> {
   queryKey?: unknown[];
   args?: TArgs;
   customSection?: React.ReactNode;
+  filtersSlot?: React.ReactNode;
   isLoading?: boolean;
   searchPlaceholder?: string;
   onDataChange?: (data: TData[]) => void;
@@ -77,6 +78,7 @@ export function DataTable<TData, TArgs extends any[]>({
   queryKey,
   args,
   customSection,
+  filtersSlot,
   isLoading = false,
   searchPlaceholder = 'Search...',
   onDataChange,
@@ -413,6 +415,7 @@ export function DataTable<TData, TArgs extends any[]>({
         </div>
 
         <DataTableFilters table={table} />
+        {filtersSlot}
 
         <div className="flex-1 flex items-center gap-2 justify-end">
           {showRefresh && serverAction && queryKey && !serverSide && (

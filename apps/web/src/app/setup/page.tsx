@@ -1,64 +1,34 @@
 'use client';
 
+import { api } from '@kanak/convex/src/_generated/api';
+import { useAuthActions } from '@convex-dev/auth/react';
 import { setupSchema } from '@kanak/shared';
 import { Button, Input, Label, Spinner } from '@kanak/ui';
+import { useConvexAuth, useMutation, useQuery } from 'convex/react';
 import { Eye, EyeOff } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 export default function SetupPage(): JSX.Element {
   const router = useRouter();
+  const { signIn } = useAuthActions();
+  const { isLoading, isAuthenticated } = useConvexAuth();
+  const hasUsers = useQuery(api.users.hasUsers, {});
+  const claimFirstAdmin = useMutation(api.users.claimFirstAdmin);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [checkingSetup, setCheckingSetup] = useState(true);
 
-  // Check if users already exist on mount
+  const checkingSetup = isLoading || hasUsers === undefined;
+
+  // Setup is a one-time page: once an account exists, it is just a login page.
   useEffect(() => {
-    const checkSetup = async (): Promise<void> => {
-      // First check if there's a JWT in localStorage
-      if (typeof window !== 'undefined') {
-        const storedToken = localStorage.getItem('auth-storage');
-        if (storedToken) {
-          try {
-            const parsed = JSON.parse(storedToken);
-            if (parsed.state?.token) {
-              // JWT exists in localStorage, redirect to auth
-              router.replace('/auth');
-              return;
-            }
-          } catch (e) {
-            // Invalid stored data, continue to check setup
-          }
-        }
-      }
-
-      // No JWT found, proceed with setup check
-      try {
-        const response = await fetch('/api/setup/check', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-        const data = await response.json();
-        if (data.hasUsers) {
-          // Users already exist, redirect to auth page immediately
-          router.replace('/auth');
-          return;
-        }
-        // Only set checkingSetup to false if no users exist
-        setCheckingSetup(false);
-      } catch (error) {
-        // Continue to setup page if check fails
-        setCheckingSetup(false);
-      }
-    };
-
-    checkSetup();
-  }, [router]);
+    if (isAuthenticated || hasUsers === true) {
+      router.replace(isAuthenticated ? '/' : '/auth');
+    }
+  }, [isAuthenticated, hasUsers, router]);
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
@@ -68,22 +38,13 @@ export default function SetupPage(): JSX.Element {
     try {
       const validatedData = setupSchema.parse({ email, password });
 
-      const response = await fetch('/api/setup/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(validatedData),
-      });
+      await signIn('password', { ...validatedData, flow: 'signUp' });
 
-      const data = await response.json();
+      // The first account owns the instance. claimFirstAdmin is a no-op once
+      // any admin exists, so a second caller cannot promote itself.
+      await claimFirstAdmin({});
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to create user');
-      }
-
-      // Redirect to auth page after successful user creation
-      router.push('/auth');
+      router.push('/');
     } catch (err: any) {
       setError(err.message || 'An error occurred during setup');
     } finally {

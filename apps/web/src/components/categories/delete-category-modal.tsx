@@ -1,6 +1,7 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import {
   Button,
   Dialog,
@@ -11,6 +12,7 @@ import {
   Spinner,
 } from '@kanak/ui';
 import { IconX } from '@tabler/icons-react';
+import { useMutation } from 'convex/react';
 import { useState } from 'react';
 
 interface DeleteCategoryModalProps {
@@ -20,16 +22,14 @@ interface DeleteCategoryModalProps {
     id: string;
     title: string;
   } | null;
-  onSuccess: () => void;
 }
 
 export function DeleteCategoryModal({
   open,
   onOpenChange,
   category,
-  onSuccess,
 }: DeleteCategoryModalProps) {
-  const { token } = useAuthStore();
+  const deactivateCategory = useMutation(api.categories.deactivateCategory);
   const [loading, setLoading] = useState(false);
 
   const handleDelete = async () => {
@@ -37,19 +37,8 @@ export function DeleteCategoryModal({
 
     try {
       setLoading(true);
-      const response = await fetch(`/api/categories/${category.id}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      await deactivateCategory({ id: category.id as Id<'categories'> });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete category');
-      }
-
-      onSuccess();
       onOpenChange(false);
     } catch (error: any) {
       console.error('Error deleting category:', error);

@@ -12,18 +12,8 @@ import {
   ChartTooltipContent,
 } from '@kanak/ui';
 import { Cell, Pie, PieChart } from 'recharts';
+import { colorAt } from './chart-palette';
 import type { WealthBreakupItem } from './total-wealth-stat';
-
-const CONTRASTING_COLORS = [
-  '#3B82F6',
-  '#10B981',
-  '#F59E0B',
-  '#EF4444',
-  '#8B5CF6',
-  '#EC4899',
-  '#06B6D4',
-  '#F97316',
-];
 
 interface WealthBreakupChartProps {
   data: WealthBreakupItem[];
@@ -60,11 +50,7 @@ export function WealthBreakupChart({ data }: WealthBreakupChartProps) {
 
   const chartConfig = data.reduce(
     (acc, item, index) => {
-      acc[item.name] = {
-        label: item.name,
-        color:
-          item.color ?? CONTRASTING_COLORS[index % CONTRASTING_COLORS.length],
-      };
+      acc[item.name] = { label: item.name, color: colorAt(index) };
       return acc;
     },
     {} as Record<string, { label: string; color: string }>
@@ -108,6 +94,9 @@ export function WealthBreakupChart({ data }: WealthBreakupChartProps) {
               cy="50%"
               outerRadius={100}
               innerRadius={60}
+              paddingAngle={2}
+              stroke="var(--color-card)"
+              strokeWidth={2}
             >
               {data.map((entry, index) => (
                 <Cell

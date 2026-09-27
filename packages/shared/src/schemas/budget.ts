@@ -18,8 +18,9 @@ export const budgetSchema = createBudgetSchema.extend({
   id: z.string(),
   userId: z.string(),
   actual: z.number().optional(),
-  createdAt: z.date(),
-  updatedAt: z.date(),
+  // Epoch milliseconds, as Convex stores and returns them.
+  createdAt: z.number(),
+  updatedAt: z.number(),
 });
 
 export type Budget = z.infer<typeof budgetSchema>;

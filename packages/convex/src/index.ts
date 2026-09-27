@@ -1,4 +1,5 @@
-export * from './auth.js';
+// auth.ts is deliberately not re-exported: it is Convex Auth's generated
+// entrypoint, only ever called as a Convex function.
 export * from './bankAccounts.js';
 export * from './budgets.js';
 export * from './categories.js';

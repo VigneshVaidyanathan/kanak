@@ -1,9 +1,9 @@
 'use client';
 
-import { AuthGuard } from '@/components/auth-guard';
 import { UpdateBanner } from '@/components/update-banner';
 import { Navbar09 } from '@/components/ui/shadcn-io/navbar-09';
-import { useAuthStore } from '@/store/auth-store';
+import { useAuthActions } from '@convex-dev/auth/react';
+import { api } from '@kanak/convex/src/_generated/api';
 import { DeviceProvider, Toaster } from '@kanak/ui';
 import {
   IconFileText,
@@ -13,16 +13,19 @@ import {
   IconCoin,
   IconSettings,
 } from '@tabler/icons-react';
+import { useQuery } from 'convex/react';
 import { useRouter } from 'next/navigation';
 
 function AppLayoutContent({ children }: { children: React.ReactNode }) {
-  const { user, clearAuth } = useAuthStore();
+  const user = useQuery(api.users.viewer, {});
+  const { signOut } = useAuthActions();
   const router = useRouter();
 
   const handleUserItemClick = (item: string) => {
     if (item === 'logout') {
-      clearAuth();
-      router.push('/auth');
+      // Convex Auth owns the session cookie; clearing the local store alone
+      // would leave the user signed in.
+      void signOut().then(() => router.push('/auth'));
     } else if (item === 'settings') {
       router.push('/settings');
     }
@@ -64,9 +67,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <DeviceProvider>
-      <AuthGuard>
-        <AppLayoutContent>{children}</AppLayoutContent>
-      </AuthGuard>
+      <AppLayoutContent>{children}</AppLayoutContent>
     </DeviceProvider>
   );
 }

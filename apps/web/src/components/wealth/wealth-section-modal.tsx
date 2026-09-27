@@ -1,6 +1,7 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import { ColorPicker, DEFAULT_COLORS } from '@kanak/components';
 import {
   Button,
@@ -13,6 +14,7 @@ import {
   Input,
   Switch,
 } from '@kanak/ui';
+import { useMutation } from 'convex/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -55,16 +57,15 @@ interface WealthSectionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   section: WealthSection | null;
-  onSuccess: () => void;
 }
 
 export function WealthSectionModal({
   open,
   onOpenChange,
   section,
-  onSuccess,
 }: WealthSectionModalProps) {
-  const { token } = useAuthStore();
+  const createWealthSection = useMutation(api.wealth.createWealthSection);
+  const updateWealthSection = useMutation(api.wealth.updateWealthSection);
   const [name, setName] = useState('');
   const [color, setColor] = useState('#9E9E9E');
   const [operation, setOperation] = useState<'add' | 'subtract'>('add');
@@ -91,11 +92,6 @@ export function WealthSectionModal({
     async (e: React.FormEvent) => {
       e.preventDefault();
 
-      if (!token) {
-        toast.error('Authentication required');
-        return;
-      }
-
       if (!name.trim()) {
         toast.error('Section name is required');
         return;
@@ -103,27 +99,15 @@ export function WealthSectionModal({
 
       setIsSubmitting(true);
       try {
-        const url = section
-          ? `/api/wealth/sections/${section.id}`
-          : '/api/wealth/sections';
-        const method = section ? 'PUT' : 'POST';
-
-        const response = await fetch(url, {
-          method,
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
+        if (section) {
+          await updateWealthSection({
+            id: section.id as Id<'wealth_sections'>,
             name: name.trim(),
-            color: color,
-            operation: operation,
-          }),
-        });
-
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Failed to save section');
+            color,
+            operation,
+          });
+        } else {
+          await createWealthSection({ name: name.trim(), color, operation });
         }
 
         toast.success(
@@ -131,7 +115,6 @@ export function WealthSectionModal({
             ? 'Section updated successfully'
             : 'Section created successfully'
         );
-        onSuccess();
         onOpenChange(false);
       } catch (error: any) {
         console.error('Error saving section:', error);
@@ -140,7 +123,15 @@ export function WealthSectionModal({
         setIsSubmitting(false);
       }
     },
-    [token, name, color, operation, section, onSuccess, onOpenChange]
+    [
+      name,
+      color,
+      operation,
+      section,
+      createWealthSection,
+      updateWealthSection,
+      onOpenChange,
+    ]
   );
 
   return (

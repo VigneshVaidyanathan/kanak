@@ -1,8 +1,9 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
+import { api } from '@kanak/convex/src/_generated/api';
 import { HoverCard, HoverCardContent } from '@kanak/ui';
-import { useCallback, useMemo, useState } from 'react';
+import { useQuery } from 'convex/react';
+import { useMemo, useState } from 'react';
 
 interface BudgetTrendCardProps {
   categoryId: string;
@@ -23,36 +24,19 @@ export function BudgetTrendCard({
   currentMonth,
   children,
 }: BudgetTrendCardProps) {
-  const { token } = useAuthStore();
-  const [history, setHistory] = useState<BudgetHistoryItem[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const fetchHistory = useCallback(async () => {
-    if (!token) return;
-
-    setLoading(true);
-    try {
-      const response = await fetch(
-        `/api/budgets?categoryId=${encodeURIComponent(
-          categoryId
-        )}&year=${currentYear}&month=${currentMonth}&months=3`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setHistory(data);
-      }
-    } catch (error) {
-      console.error('Error fetching budget history:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [token, categoryId, currentYear, currentMonth]);
+  // Only subscribe once the hover card opens; this renders per budget row.
+  const [open, setOpen] = useState(false);
+  const historyResult = useQuery(
+    api.budgets.getBudgetHistory,
+    open
+      ? { categoryId, year: currentYear, month: currentMonth, months: 3 }
+      : 'skip'
+  );
+  const history = useMemo(
+    () => (historyResult ?? []) as BudgetHistoryItem[],
+    [historyResult]
+  );
+  const loading = open && historyResult === undefined;
 
   // Calculate previous month budget
   const previousBudget = history.length > 0 ? history[0] : null;
@@ -74,7 +58,7 @@ export function BudgetTrendCard({
   };
 
   return (
-    <HoverCard onOpenChange={(open) => open && fetchHistory()}>
+    <HoverCard onOpenChange={setOpen}>
       {children}
       <HoverCardContent className="w-64">
         {loading ? (

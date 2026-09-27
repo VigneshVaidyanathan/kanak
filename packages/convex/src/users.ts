@@ -1,56 +1,54 @@
-import { v } from 'convex/values';
+import { getAuthUserId } from '@convex-dev/auth/server';
 import { mutation, query } from './_generated/server.js';
 
-export const findUserByEmail = query({
-  args: { email: v.string() },
-  handler: async (ctx, args) => {
-    const user = await ctx.db
-      .query('users')
-      .withIndex('by_email', (q) => q.eq('email', args.email))
-      .first();
-    return user;
-  },
-});
-
-export const countUsers = query({
+// Public, but only ever answers yes/no: the setup page needs to know whether to
+// offer sign-up, and a count would leak more than that.
+export const hasUsers = query({
   args: {},
   handler: async (ctx) => {
-    const users = await ctx.db.query('users').collect();
-    return users.length;
+    const first = await ctx.db.query('users').first();
+    return first !== null;
   },
 });
 
-export const createUser = mutation({
-  args: {
-    email: v.string(),
-    name: v.string(),
-    password: v.string(),
-    role: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const now = Date.now();
-    const userId = await ctx.db.insert('users', {
-      email: args.email,
-      name: args.name,
-      password: args.password, // Should be hashed before calling
-      role: args.role || 'user',
-      createdAt: now,
-      updatedAt: now,
-    });
-
+// The signed-in user, for the client. Returns null rather than throwing so a
+// page can render its unauthenticated state.
+export const viewer = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      return null;
+    }
     const user = await ctx.db.get(userId);
     if (!user) {
-      throw new Error('Failed to create user');
+      return null;
     }
-
-    // Return only selected fields (matching Prisma select)
     return {
       id: user._id,
       email: user.email,
       name: user.name,
       role: user.role,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
     };
+  },
+});
+
+// First account to sign up owns the instance. Requires being signed in already,
+// and refuses once any admin exists, so it can't be used to escalate later.
+export const claimFirstAdmin = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new Error('Unauthorized');
+    }
+
+    const users = await ctx.db.query('users').collect();
+    if (users.some((user) => user.role === 'admin')) {
+      return { promoted: false };
+    }
+
+    await ctx.db.patch(userId, { role: 'admin', updatedAt: Date.now() });
+    return { promoted: true };
   },
 });

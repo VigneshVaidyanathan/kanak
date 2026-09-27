@@ -1,6 +1,7 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import {
   Category,
   Filter,
@@ -22,6 +23,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@kanak/ui';
+import { useMutation } from 'convex/react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
@@ -75,7 +77,25 @@ export function TransactionRuleModal({
   categories,
   onSuccess,
 }: TransactionRuleModalProps) {
-  const { token } = useAuthStore();
+  const createTransactionRule = useMutation(
+    api.transactionRules.createTransactionRule
+  );
+  const updateTransactionRule = useMutation(
+    api.transactionRules.updateTransactionRule
+  );
+  const applyRules = useMutation(api.transactions.applyRules);
+
+  const saveRule = async () => {
+    if (rule) {
+      return await updateTransactionRule({
+        id: rule.id as Id<'transaction_rules'>,
+        title,
+        filter,
+        action,
+      });
+    }
+    return await createTransactionRule({ title, filter, action });
+  };
   const [title, setTitle] = useState(rule?.title || '');
   const [filter, setFilter] = useState<GroupFilter>(() => {
     if (rule?.filter) {
@@ -195,34 +215,13 @@ export function TransactionRuleModal({
   }, [title, hasFilter, action]);
 
   const handleSave = async () => {
-    if (!canSave || !token) {
+    if (!canSave) {
       return;
     }
 
     setLoading(true);
     try {
-      const url = rule
-        ? `/api/transaction-rules/${rule.id}`
-        : '/api/transaction-rules';
-      const method = rule ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          title,
-          filter,
-          action,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to save rule');
-      }
+      await saveRule();
 
       toast.success(
         rule ? 'Rule updated successfully' : 'Rule created successfully'
@@ -245,64 +244,24 @@ export function TransactionRuleModal({
   };
 
   const handleSaveAndRun = async () => {
-    if (!canSave || !token) {
+    if (!canSave) {
       return;
     }
 
     setLoading(true);
     setRunning(true);
     try {
-      // First, save/update the rule
-      const url = rule
-        ? `/api/transaction-rules/${rule.id}`
-        : '/api/transaction-rules';
-      const method = rule ? 'PUT' : 'POST';
-
-      const saveResponse = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          title,
-          filter,
-          action,
-        }),
-      });
-
-      if (!saveResponse.ok) {
-        const error = await saveResponse.json();
-        throw new Error(error.error || 'Failed to save rule');
-      }
-
-      const savedRule = await saveResponse.json();
-      // Use the rule ID from the saved rule (for new rules) or existing rule (for updates)
-      const ruleId = savedRule.id || rule?.id;
+      const savedRule = await saveRule();
+      const ruleId = savedRule.id ?? rule?.id;
 
       if (!ruleId) {
         throw new Error('Failed to get rule ID after saving');
       }
 
-      // Then, apply the rule to all transactions
-      // Keep loading state true while applying
-      const applyResponse = await fetch(
-        `/api/transaction-rules/${ruleId}/apply`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (!applyResponse.ok) {
-        const error = await applyResponse.json();
-        throw new Error(error.error || 'Failed to apply rule');
-      }
-
-      const result = await applyResponse.json();
+      // Then apply just this rule, across every transaction.
+      const result = await applyRules({
+        ruleId: ruleId as Id<'transaction_rules'>,
+      });
 
       toast.success(
         `Rule ${rule ? 'updated' : 'created'} and applied successfully! Updated ${result.updated} transaction(s).`

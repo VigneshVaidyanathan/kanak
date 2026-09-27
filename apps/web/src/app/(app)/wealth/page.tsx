@@ -6,8 +6,10 @@ import { WealthDateCell } from '@/components/wealth/wealth-date-cell';
 import { WealthDatePickerModal } from '@/components/wealth/wealth-date-picker-modal';
 import { WealthLineItemModal } from '@/components/wealth/wealth-line-item-modal';
 import { WealthSectionModal } from '@/components/wealth/wealth-section-modal';
-import { useAuthStore } from '@/store/auth-store';
+import { importWealthCsv } from '@/lib/wealth-import';
 import { NotReadyForMobile } from '@kanak/components';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import {
   Button,
   DropdownMenu,
@@ -22,6 +24,7 @@ import {
   useDevice,
 } from '@kanak/ui';
 import {
+  IconCheck,
   IconChevronDown,
   IconChevronRight,
   IconChevronsDown,
@@ -32,7 +35,9 @@ import {
   IconTrash,
   IconTrendingDown,
   IconTrendingUp,
+  IconUpload,
 } from '@tabler/icons-react';
+import { useConvex, useMutation, useQuery } from 'convex/react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -74,14 +79,81 @@ interface WealthData {
   };
 }
 
+const DATE_RANGE_OPTIONS = [
+  { value: 'current-year', label: 'Current year' },
+  { value: 'last-12-months', label: 'Last 12 months' },
+  { value: 'last-3-years', label: 'Last 3 years' },
+  { value: 'all', label: 'All data' },
+] as const;
+
+type DateRangeOption = (typeof DATE_RANGE_OPTIONS)[number]['value'];
+
+function getRangeBounds(range: DateRangeOption): {
+  startDate: Date;
+  endDate: Date;
+} {
+  const now = new Date();
+  // Far end so future-dated entries are never cut off.
+  const endDate = new Date(now.getFullYear() + 10, 11, 31);
+
+  switch (range) {
+    case 'current-year':
+      return {
+        startDate: new Date(now.getFullYear(), 0, 1),
+        endDate: new Date(now.getFullYear(), 11, 31),
+      };
+    case 'last-12-months':
+      return {
+        startDate: new Date(
+          now.getFullYear() - 1,
+          now.getMonth(),
+          now.getDate()
+        ),
+        endDate,
+      };
+    case 'last-3-years':
+      return {
+        startDate: new Date(
+          now.getFullYear() - 3,
+          now.getMonth(),
+          now.getDate()
+        ),
+        endDate,
+      };
+    case 'all':
+    default:
+      return { startDate: new Date(0), endDate };
+  }
+}
+
+/** YYYY-MM-DD to UTC midnight, so a date key never shifts with the timezone. */
+function parseUTCDateKey(dateKey: string): number {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return Date.UTC(year, month - 1, day);
+}
+
 export default function WealthPage() {
+  const convex = useConvex();
+  const createWealthSection = useMutation(api.wealth.createWealthSection);
+  const createWealthLineItem = useMutation(api.wealth.createWealthLineItem);
+  const createOrUpdateWealthEntries = useMutation(
+    api.wealth.createOrUpdateWealthEntries
+  );
+  const updateWealthEntriesDate = useMutation(
+    api.wealth.updateWealthEntriesDate
+  );
+  const updateWealthSectionsOrder = useMutation(
+    api.wealth.updateWealthSectionsOrder
+  );
+  const updateWealthLineItemsOrder = useMutation(
+    api.wealth.updateWealthLineItemsOrder
+  );
   const { isDesktop } = useDevice();
   const router = useRouter();
-  const { isAuthenticated, token } = useAuthStore();
-  const [loading, setLoading] = useState(true);
   const [wealthData, setWealthData] = useState<WealthData | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [dates, setDates] = useState<Date[]>([]);
+  const [dateRange, setDateRange] = useState<DateRangeOption>('all');
   const [entryValues, setEntryValues] = useState<
     Record<string, Record<string, number>>
   >({});
@@ -125,119 +197,76 @@ export default function WealthPage() {
   );
   const [isReordering, setIsReordering] = useState(false);
   const [datePickerModalOpen, setDatePickerModalOpen] = useState(false);
+  const [editingDate, setEditingDate] = useState<Date | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Dates will be extracted from entries fetched from API
 
-  // Helper function to format date as YYYY-MM-DD in local timezone (not UTC)
+  // Helper: format date as YYYY-MM-DD in UTC (constant, no timezone conversion)
   const formatDateKey = useCallback((date: Date): string => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   }, []);
 
-  // Helper function to parse date string (YYYY-MM-DD) to Date in local timezone
+  // Helper: parse YYYY-MM-DD to Date at UTC midnight (constant, no timezone conversion)
   const parseDateKey = useCallback((dateStr: string): Date => {
     const [year, month, day] = dateStr.split('-').map(Number);
-    return new Date(year, month - 1, day);
+    return new Date(Date.UTC(year, month - 1, day));
   }, []);
 
-  // Fetch wealth data
-  const fetchWealthData = useCallback(async () => {
-    if (!token) return;
+  // Sections and the range's entries. The grid keeps its own `entryValues`
+  // because cells are editable with auto-save, so the query result is copied
+  // into local state on load rather than rendered directly.
+  const { startDate: rangeStart, endDate: rangeEnd } = useMemo(
+    () => getRangeBounds(dateRange),
+    [dateRange]
+  );
+  const sectionsResult = useQuery(api.wealth.getWealthSectionsByUserId, {});
+  const entriesResult = useQuery(api.wealth.getWealthEntriesByDateRange, {
+    startDate: rangeStart.getTime(),
+    endDate: rangeEnd.getTime(),
+  });
+  const loading = sectionsResult === undefined || entriesResult === undefined;
 
-    try {
-      setLoading(true);
+  useEffect(() => {
+    if (sectionsResult === undefined || entriesResult === undefined) return;
 
-      // Always fetch all entries (API defaults to last 12 months if no date range provided)
-      // We'll extract unique dates from the entries returned
-      const response = await fetch('/api/wealth', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+    setWealthData({
+      sections: sectionsResult,
+      entries: entriesResult,
+    } as unknown as WealthData);
 
-      if (response.ok) {
-        const data: WealthData = await response.json();
-        setWealthData(data);
-
-        // Extract unique dates from entries and sort chronologically (latest first)
-        const uniqueDates = new Set<string>();
-        const values: Record<string, Record<string, number>> = {};
-        if (data.entries) {
-          data.entries.forEach((entry) => {
-            // Parse the date string from API (YYYY-MM-DD format)
-            const entryDate = new Date(entry.date);
-            const dateKey = formatDateKey(entryDate);
-            uniqueDates.add(dateKey);
-            if (!values[dateKey]) {
-              values[dateKey] = {};
-            }
-            values[dateKey][entry.lineItemId] = entry.amount;
-          });
-        }
-
-        // Convert to Date objects and sort descending (latest first)
-        const sortedDates = Array.from(uniqueDates)
-          .map((dateStr) => {
-            return parseDateKey(dateStr);
-          })
-          .sort((a, b) => b.getTime() - a.getTime());
-
-        setDates(sortedDates);
-        setEntryValues(values);
-        // Store initial values for comparison
-        initialEntryValuesRef.current = JSON.parse(JSON.stringify(values));
-        hasUserMadeChangeRef.current = false;
-        // Mark that initial load is complete after a delay to ensure state is set
-        // This prevents auto-save from triggering when data is loaded from API
-        setTimeout(() => {
-          isInitialLoadRef.current = false;
-        }, 500);
-      }
-    } catch (error) {
-      console.error('Error fetching wealth data:', error);
-    } finally {
-      setLoading(false);
+    const uniqueDates = new Set<string>();
+    const values: Record<string, Record<string, number>> = {};
+    for (const entry of entriesResult) {
+      const dateKey = formatDateKey(new Date(entry.date));
+      uniqueDates.add(dateKey);
+      values[dateKey] ??= {};
+      values[dateKey][entry.lineItemId] = entry.amount;
     }
-  }, [token, formatDateKey, parseDateKey]);
+
+    // Latest first.
+    setDates(
+      Array.from(uniqueDates)
+        .map(parseDateKey)
+        .sort((a, b) => b.getTime() - a.getTime())
+    );
+    setEntryValues(values);
+    initialEntryValuesRef.current = JSON.parse(JSON.stringify(values));
+    hasUserMadeChangeRef.current = false;
+    // Let the state settle before auto-save starts watching, or loading the
+    // data would look like an edit.
+    const timer = setTimeout(() => {
+      isInitialLoadRef.current = false;
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [sectionsResult, entriesResult, formatDateKey, parseDateKey]);
+
+  const lastFetchKeyRef = useRef<string | null>(null);
 
   // Initial data fetch
-  useEffect(() => {
-    const checkAuthAndFetch = () => {
-      if (typeof window !== 'undefined') {
-        const storedAuth = localStorage.getItem('auth-storage');
-        if (storedAuth) {
-          try {
-            const parsed = JSON.parse(storedAuth);
-            if (parsed.state?.token && parsed.state?.user) {
-              if (!isAuthenticated) {
-                const { setAuth } = useAuthStore.getState();
-                setAuth(parsed.state.user, parsed.state.token);
-              }
-              fetchWealthData();
-              return;
-            }
-          } catch (e) {
-            // Invalid stored data
-          }
-        }
-      }
-
-      if (!isAuthenticated && !token) {
-        router.push('/auth');
-        return;
-      }
-
-      if (isAuthenticated || token) {
-        fetchWealthData();
-      }
-    };
-
-    checkAuthAndFetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, token, router]);
 
   // Dates are now extracted from entries, so we don't need to refetch on date changes
 
@@ -296,7 +325,7 @@ export default function WealthPage() {
 
   // Save all entries for all dates (only dates that have at least one non-zero value)
   const saveAllEntries = useCallback(async () => {
-    if (!token || !wealthData || dates.length === 0) return;
+    if (!wealthData || dates.length === 0) return;
 
     // Check if values have actually changed from initial load
     if (!hasEntryValuesChanged(entryValues, initialEntryValuesRef.current)) {
@@ -344,22 +373,13 @@ export default function WealthPage() {
               amount: entryValues[dateKey]?.[lineItem.id] || 0,
             }));
 
-          const response = await fetch('/api/wealth/entries', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              date: dateKey,
-              entries,
-            }),
+          await createOrUpdateWealthEntries({
+            date: parseUTCDateKey(dateKey),
+            entries: entries.map((entry) => ({
+              lineItemId: entry.lineItemId as Id<'wealth_line_items'>,
+              amount: entry.amount,
+            })),
           });
-
-          if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to save entries');
-          }
         });
 
       if (savePromises.length > 0) {
@@ -378,12 +398,12 @@ export default function WealthPage() {
       setIsSaving(false);
     }
   }, [
-    token,
     wealthData,
     entryValues,
     dates,
     formatDateKey,
     hasEntryValuesChanged,
+    createOrUpdateWealthEntries,
   ]);
 
   // Debounced auto-save - only save when entryValues actually change (user edits)
@@ -473,35 +493,130 @@ export default function WealthPage() {
     setDeleteLineItemModalOpen(true);
   }, []);
 
-  // Handle open date picker modal
-  const handleAddDate = useCallback(() => {
+  // Handle open date picker modal (add)
+  const csvInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCsvUpload = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (!file) return;
+
+      const toastId = toast.loading(`Uploading ${file.name}...`);
+      try {
+        const result = await importWealthCsv(
+          {
+            getSections: () =>
+              convex.query(api.wealth.getWealthSectionsByUserId, {}),
+            createSection: createWealthSection,
+            createLineItem: createWealthLineItem,
+            createEntries: createOrUpdateWealthEntries,
+          },
+          await file.text()
+        );
+
+        toast.success(
+          `Imported ${result.entries} values across ${result.dates} dates`,
+          { id: toastId }
+        );
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Upload failed', {
+          id: toastId,
+        });
+      }
+    },
+    [
+      convex,
+      createWealthSection,
+      createWealthLineItem,
+      createOrUpdateWealthEntries,
+    ]
+  );
+
+  const handleAddDate = useCallback((): void => {
+    setEditingDate(null);
     setDatePickerModalOpen(true);
   }, []);
 
-  // Handle date selected from modal - just add to frontend state
+  // Handle edit date: open modal in edit scope
+  const handleEditDate = useCallback((date: Date): void => {
+    setEditingDate(date);
+    setDatePickerModalOpen(true);
+  }, []);
+
+  // Handle date selected from modal (add or edit). Store as UTC midnight (constant, no timezone conversion).
   const handleDateSelected = useCallback(
-    (selectedDate: Date) => {
-      const dateToAdd = new Date(selectedDate);
-      dateToAdd.setHours(0, 0, 0, 0);
-      const dateKey = formatDateKey(dateToAdd);
+    async (selectedDate: Date): Promise<void> => {
+      const y = selectedDate.getFullYear();
+      const m = selectedDate.getMonth();
+      const d = selectedDate.getDate();
+      const newDateUTC = new Date(Date.UTC(y, m, d));
+      const newDateKey = formatDateKey(newDateUTC);
 
-      // Check if date already exists
-      const dateExists = dates.some((d) => formatDateKey(d) === dateKey);
+      if (editingDate) {
+        // Edit scope: update all entries from old date to new date
+        const oldDateKey = formatDateKey(editingDate);
+        if (oldDateKey === newDateKey) {
+          setEditingDate(null);
+          setDatePickerModalOpen(false);
+          return;
+        }
+        const dateExists = dates.some(
+          (d) =>
+            formatDateKey(d) === newDateKey && formatDateKey(d) !== oldDateKey
+        );
+        if (dateExists) {
+          toast.error('This date already exists');
+          return;
+        }
+        try {
+          await updateWealthEntriesDate({
+            oldDateTimestamp: parseUTCDateKey(oldDateKey),
+            newDateTimestamp: parseUTCDateKey(newDateKey),
+          });
+          setDates((prev) =>
+            prev
+              .map((d) => (formatDateKey(d) === oldDateKey ? newDateUTC : d))
+              .sort((a, b) => b.getTime() - a.getTime())
+          );
+          setEntryValues((prev) => {
+            const next = { ...prev };
+            if (next[oldDateKey]) {
+              next[newDateKey] = next[oldDateKey];
+              delete next[oldDateKey];
+            }
+            return next;
+          });
+          const nextInitial = { ...initialEntryValuesRef.current };
+          if (nextInitial[oldDateKey]) {
+            nextInitial[newDateKey] = nextInitial[oldDateKey];
+            delete nextInitial[oldDateKey];
+          }
+          initialEntryValuesRef.current = nextInitial;
+          setEditingDate(null);
+          setDatePickerModalOpen(false);
+          toast.success('Date updated');
+        } catch (e: unknown) {
+          toast.error(e instanceof Error ? e.message : 'Failed to update date');
+        }
+        return;
+      }
 
+      // Add scope: check if date already exists and add to state
+      const dateExists = dates.some((d) => formatDateKey(d) === newDateKey);
       if (dateExists) {
         toast.error('This date already exists');
         return;
       }
-
-      // Just add the date to the frontend state
       setDates((prev) => {
-        const updated = [...prev, dateToAdd].sort(
+        const updated = [...prev, newDateUTC].sort(
           (a, b) => b.getTime() - a.getTime()
         );
         return updated;
       });
+      setDatePickerModalOpen(false);
     },
-    [dates, formatDateKey]
+    [dates, formatDateKey, editingDate, updateWealthEntriesDate]
   );
 
   // Calculate section totals
@@ -576,7 +691,7 @@ export default function WealthPage() {
       const dateKey = formatDateKey(date);
       const entry = wealthData.entries.find(
         (e) =>
-          e.lineItem.id === lineItemId &&
+          e.lineItemId === lineItemId &&
           formatDateKey(new Date(e.date)) === dateKey
       );
       return entry ? entry.updatedAt : null;
@@ -673,33 +788,23 @@ export default function WealthPage() {
           order: index,
         }));
 
-        const response = await fetch('/api/wealth/sections/reorder', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ updates }),
+        await updateWealthSectionsOrder({
+          updates: updates.map((update: { id: string; order: number }) => ({
+            id: update.id as Id<'wealth_sections'>,
+            order: update.order,
+          })),
         });
-
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Failed to save order');
-        }
-
-        const savedSections = await response.json();
-        setWealthData({ ...wealthData, sections: savedSections });
         toast.success('Sections reordered successfully');
       } catch (error: any) {
         console.error('Error saving section order:', error);
         toast.error(error.message || 'Failed to save order');
-        fetchWealthData(); // Revert on error
+        // The live query is the source of truth; it re-renders on its own.
       } finally {
         setIsReordering(false);
         setDraggedSectionId(null);
       }
     },
-    [draggedSectionId, wealthData, token, fetchWealthData]
+    [draggedSectionId, wealthData, updateWealthSectionsOrder]
   );
 
   // Drag and drop handlers for line items
@@ -774,32 +879,24 @@ export default function WealthPage() {
           order: index,
         }));
 
-        const response = await fetch('/api/wealth/line-items/reorder', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ updates }),
+        await updateWealthLineItemsOrder({
+          updates: updates.map((update: { id: string; order: number }) => ({
+            id: update.id as Id<'wealth_line_items'>,
+            order: update.order,
+          })),
         });
 
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Failed to save order');
-        }
-
         toast.success('Line items reordered successfully');
-        fetchWealthData();
       } catch (error: any) {
         console.error('Error saving line item order:', error);
         toast.error(error.message || 'Failed to save order');
-        fetchWealthData(); // Revert on error
+        // The live query is the source of truth; it re-renders on its own.
       } finally {
         setIsReordering(false);
         setDraggedLineItemId(null);
       }
     },
-    [draggedLineItemId, wealthData, token, fetchWealthData]
+    [draggedLineItemId, wealthData, updateWealthLineItemsOrder]
   );
 
   // Create flattened data structure for column-based layout
@@ -913,6 +1010,35 @@ export default function WealthPage() {
                 variant="outline"
                 className="flex items-center gap-2"
               >
+                {DATE_RANGE_OPTIONS.find((o) => o.value === dateRange)?.label}
+                <IconChevronDown size={16} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {DATE_RANGE_OPTIONS.map((option) => (
+                <DropdownMenuItem
+                  key={option.value}
+                  onClick={() => setDateRange(option.value)}
+                  className="flex items-center gap-2"
+                >
+                  <IconCheck
+                    size={16}
+                    className={
+                      option.value === dateRange ? 'opacity-100' : 'opacity-0'
+                    }
+                  />
+                  <span>{option.label}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex items-center gap-2"
+              >
                 Actions
                 <IconChevronDown size={16} />
               </Button>
@@ -932,6 +1058,13 @@ export default function WealthPage() {
                 <IconPlus size={16} />
                 <span>Add Section</span>
               </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => csvInputRef.current?.click()}
+                className="flex items-center gap-2"
+              >
+                <IconUpload size={16} />
+                <span>Upload CSV</span>
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={expandAllSections}
@@ -949,6 +1082,13 @@ export default function WealthPage() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <input
+            ref={csvInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={handleCsvUpload}
+          />
         </div>
       </div>
 
@@ -971,7 +1111,7 @@ export default function WealthPage() {
 
       <div className="rounded-lg border bg-card overflow-x-auto">
         {/* Header Row */}
-        <div className="flex bg-muted/50 min-w-full">
+        <div className="flex bg-muted/50 w-max min-w-full">
           <div className="min-w-[300px] shrink-0 sticky left-0 z-20  border-r border-gray-400 p-3 rounded-l-lg bg-gray-50">
             {/* Empty header for frozen column */}
           </div>
@@ -980,18 +1120,29 @@ export default function WealthPage() {
             style={{ minWidth: `${dates.length * 150}px` }}
           >
             {dates.length > 0 ? (
-              dates.map((date, index) => (
+              dates.map((date) => (
                 <div
                   key={date.toISOString()}
-                  className="w-[200px] shrink-0 p-3 flex flex-col bg-gray-50 items-center justify-center border-r border-border last:border-r-0"
+                  className="group/date w-[200px] shrink-0 p-3 flex flex-col bg-gray-50 items-center justify-center border-r border-border last:border-r-0 relative"
                 >
                   <span className="text-sm font-medium text-muted-foreground">
                     {date.toLocaleDateString('en-US', {
+                      timeZone: 'UTC',
                       day: 'numeric',
                       month: 'short',
                       year: 'numeric',
                     })}
                   </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0 opacity-0 group-hover/date:opacity-100 transition-opacity"
+                    onClick={() => handleEditDate(date)}
+                    aria-label="Edit date"
+                  >
+                    <IconEdit size={14} />
+                  </Button>
                 </div>
               ))
             ) : (
@@ -1003,12 +1154,12 @@ export default function WealthPage() {
         </div>
 
         {/* Data Rows */}
-        <div className="space-y-2 min-w-full">
+        <div className="space-y-2 w-max min-w-full">
           {tableRows.map((row) => {
             if (row.type === 'total') {
               // Total Wealth Row
               return (
-                <div key={row.id} className="flex rounded-lg min-w-full">
+                <div key={row.id} className="flex rounded-lg w-max min-w-full">
                   <div className="min-w-[300px] bg-gray-100 shrink-0 sticky left-0 z-10">
                     <div className="font-bold text-base p-2 border-r border-gray-400 rounded-l-lg flex items-center justify-center gap-2">
                       Total Wealth
@@ -1118,7 +1269,7 @@ export default function WealthPage() {
                   onDragOver={handleSectionDragOver}
                   onDragEnd={handleSectionDragEnd}
                   onDrop={(e) => handleSectionDrop(e, section.id)}
-                  className={`group flex rounded-lg cursor-pointer hover:opacity-90 transition-opacity min-w-full ${
+                  className={`group flex rounded-lg cursor-pointer hover:opacity-90 transition-opacity w-max min-w-full ${
                     isDragging ? 'opacity-50' : ''
                   }`}
                   onClick={() => toggleSection(section.id)}
@@ -1298,7 +1449,7 @@ export default function WealthPage() {
                   onDragOver={handleLineItemDragOver}
                   onDragEnd={handleLineItemDragEnd}
                   onDrop={(e) => handleLineItemDrop(e, lineItem.id, section.id)}
-                  className={`group flex rounded-lg min-w-full ${
+                  className={`group flex rounded-lg w-max min-w-full ${
                     isDragging ? 'opacity-50' : ''
                   }`}
                 >
@@ -1389,10 +1540,6 @@ export default function WealthPage() {
         open={sectionModalOpen}
         onOpenChange={setSectionModalOpen}
         section={editingSection}
-        onSuccess={() => {
-          fetchWealthData();
-          setSectionModalOpen(false);
-        }}
       />
 
       <WealthLineItemModal
@@ -1402,37 +1549,29 @@ export default function WealthPage() {
         sectionId={
           editingLineItem?.sectionId || selectedSectionForLineItem || ''
         }
-        onSuccess={() => {
-          fetchWealthData();
-          setLineItemModalOpen(false);
-          setSelectedSectionForLineItem(null);
-        }}
       />
 
       <WealthDatePickerModal
         open={datePickerModalOpen}
-        onOpenChange={setDatePickerModalOpen}
+        onOpenChange={(open) => {
+          setDatePickerModalOpen(open);
+          if (!open) setEditingDate(null);
+        }}
         onDateSelect={handleDateSelected}
+        scope={editingDate ? 'edit' : 'add'}
+        initialDate={editingDate}
       />
 
       <DeleteLineItemModal
         open={deleteLineItemModalOpen}
         onOpenChange={setDeleteLineItemModalOpen}
         lineItem={lineItemToDelete}
-        onSuccess={() => {
-          fetchWealthData();
-          setLineItemToDelete(null);
-        }}
       />
 
       <DeleteSectionModal
         open={deleteSectionModalOpen}
         onOpenChange={setDeleteSectionModalOpen}
         section={sectionToDelete}
-        onSuccess={() => {
-          fetchWealthData();
-          setSectionToDelete(null);
-        }}
       />
     </div>
   );

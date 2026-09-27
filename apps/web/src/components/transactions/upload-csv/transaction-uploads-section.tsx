@@ -1,20 +1,22 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
 import { DataTable, DataTableColumnHeader } from '@kanak/components';
+import { api } from '@kanak/convex/src/_generated/api';
 import { Badge, Spinner } from '@kanak/ui';
 import { IconFileUpload } from '@tabler/icons-react';
 import { ColumnDef } from '@tanstack/react-table';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from 'convex/react';
+import { useMemo } from 'react';
 
 type TransactionUpload = {
   id: string;
   fileName: string;
   fileSize: number;
   totalRows: number;
-  uploadedAt: Date;
-  createdAt: Date;
-  updatedAt: Date;
+  // Epoch milliseconds, as Convex stores and returns them.
+  uploadedAt: number;
+  createdAt: number;
+  updatedAt: number;
 };
 
 const formatFileSize = (bytes: number): string => {
@@ -25,7 +27,8 @@ const formatFileSize = (bytes: number): string => {
   return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
 };
 
-const formatDate = (date: Date): string => {
+const formatDate = (timestamp: number): string => {
+  const date = new Date(timestamp);
   return new Intl.DateTimeFormat('en-US', {
     year: 'numeric',
     month: 'short',
@@ -36,55 +39,15 @@ const formatDate = (date: Date): string => {
 };
 
 export function TransactionUploadsSection() {
-  const { token } = useAuthStore();
-  const [uploads, setUploads] = useState<TransactionUpload[]>([]);
-  const [loading, setLoading] = useState(true);
-  const fetchingRef = useRef(false);
-
-  const fetchUploads = useCallback(async () => {
-    // Prevent duplicate calls (especially from React Strict Mode)
-    if (fetchingRef.current) {
-      return;
-    }
-
-    if (!token) {
-      return;
-    }
-
-    try {
-      fetchingRef.current = true;
-      setLoading(true);
-      const response = await fetch('/api/transactions/upload/list', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to fetch uploads');
-      }
-
-      const data = await response.json();
-      // Convert date strings to Date objects
-      const uploadsWithDates = data.map((upload: any) => ({
-        ...upload,
-        uploadedAt: new Date(upload.uploadedAt),
-        createdAt: new Date(upload.createdAt),
-        updatedAt: new Date(upload.updatedAt),
-      }));
-      setUploads(uploadsWithDates);
-    } catch (error) {
-      console.error('Error fetching uploads:', error);
-    } finally {
-      setLoading(false);
-      fetchingRef.current = false;
-    }
-  }, [token]);
-
-  useEffect(() => {
-    fetchUploads();
-  }, [fetchUploads]);
+  const uploadsResult = useQuery(
+    api.transactionUploads.getTransactionUploadsByUserId,
+    {}
+  );
+  const loading = uploadsResult === undefined;
+  const uploads = useMemo(
+    () => (uploadsResult ?? []) as TransactionUpload[],
+    [uploadsResult]
+  );
 
   const columns = useMemo<ColumnDef<TransactionUpload>[]>(
     () => [
@@ -92,16 +55,27 @@ export function TransactionUploadsSection() {
         accessorKey: 'fileName',
         meta: {
           header: 'File Name',
+          // ponytail: flex lets the name column absorb leftover width
+          flex: true,
+          cellClassname: 'min-w-[320px]',
+          headerClassname: 'min-w-[320px]',
         },
-        size: 250,
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="File Name" />
         ),
         cell: ({ row }) => {
           return (
-            <div className="flex items-center gap-2">
-              <IconFileUpload size={16} className="text-muted-foreground" />
-              <div className="text-sm font-medium">{row.original.fileName}</div>
+            <div className="flex min-w-0 items-center gap-2">
+              <IconFileUpload
+                size={16}
+                className="shrink-0 text-muted-foreground"
+              />
+              <div
+                className="truncate text-sm font-medium"
+                title={row.original.fileName}
+              >
+                {row.original.fileName}
+              </div>
             </div>
           );
         },

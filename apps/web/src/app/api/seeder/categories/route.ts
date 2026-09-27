@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAuth } from '@/lib/auth';
-import { createCategory } from '@kanak/api';
-import { CreateCategoryInput } from '@kanak/shared';
+import { convexAuthNextjsToken } from '@convex-dev/auth/nextjs/server';
+import { getAuthedConvexClient } from '@kanak/api';
+import { api } from '@kanak/convex/src/_generated/api';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,8 +74,13 @@ const categoryMappings: Array<
 
 export async function POST(request: NextRequest) {
   try {
-    const authPayload = await verifyAuth(request);
-    const userId = authPayload.userId;
+    const token = await convexAuthNextjsToken();
+    if (!token) {
+      throw new Error('No authentication token provided');
+    }
+    // The mutation takes the owner from the token, so the seeder can only ever
+    // write to the account of whoever is signed in.
+    const convex = await getAuthedConvexClient(token);
 
     const results: Array<{
       success: boolean;
@@ -86,27 +91,16 @@ export async function POST(request: NextRequest) {
 
     for (const [title, type, priority, color, icon] of categoryMappings) {
       try {
-        const categoryData: CreateCategoryInput = {
+        const category = await convex.mutation(api.categories.createCategory, {
           title,
-          type: type as any,
-          priority: priority as any,
+          type,
+          priority,
           color,
           icon,
-        };
-
-        const category = await createCategory(userId, categoryData);
+        });
         results.push({ success: true, category: category.title });
       } catch (error: any) {
-        // Skip if category already exists (duplicate)
-        if (error.code === 'P2002') {
-          results.push({
-            success: false,
-            category: title,
-            error: 'Already exists',
-          });
-        } else {
-          errors.push({ category: title, error: error.message });
-        }
+        errors.push({ category: title, error: error.message });
       }
     }
 

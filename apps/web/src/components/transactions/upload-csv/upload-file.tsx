@@ -1,42 +1,21 @@
 'use client';
 
+import { getParseErrorMessage, parseCsvStructure } from '@/lib/csv-structure';
 import { type FileContent, useCsvUploadStore } from '@/store/csv-upload-store';
 import { Alert, AlertDescription, AlertTitle, Button } from '@kanak/ui';
-import { IconArrowRight } from '@tabler/icons-react';
-import { parse as parseCsv } from 'csv-parse/sync';
+import { IconArrowRight, IconWand } from '@tabler/icons-react';
 import { useCallback, useState } from 'react';
 import { FileRejection, useDropzone } from 'react-dropzone';
 
-/**
- * Turn CSV parse errors into a short, user-friendly message.
- */
-function getParseErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    const msg = error.message || '';
-    // csv-parse often includes "at line X" or "at column X"
-    if (msg.toLowerCase().includes('quote')) {
-      return 'Invalid or unclosed quotes in the CSV. Check that every quoted value is properly closed.';
-    }
-    if (
-      msg.toLowerCase().includes('delimiter') ||
-      msg.toLowerCase().includes('column')
-    ) {
-      return 'The CSV structure seems invalid. Make sure the file uses commas to separate columns.';
-    }
-    if (msg.toLowerCase().includes('line')) {
-      return msg.length > 120 ? `${msg.slice(0, 120)}…` : msg;
-    }
-    return msg.length > 120 ? `${msg.slice(0, 120)}…` : msg;
-  }
-  return 'The file could not be read. Please ensure it is a valid CSV file.';
-}
-
 export const UploadFile = ({
   onComplete,
+  onClean,
 }: {
   onComplete: (fileContent?: FileContent) => void;
+  onClean: () => void;
 }) => {
-  const { setFileName, setFileSize } = useCsvUploadStore();
+  const { rawContent, setFileName, setFileSize, setRawContent } =
+    useCsvUploadStore();
   const [uploadFileStatus, setUploadFileStatus] = useState<
     'accepted' | 'rejected' | undefined
   >();
@@ -44,11 +23,15 @@ export const UploadFile = ({
   const [fileContent, setFileContent] = useState<FileContent>();
   const [parseError, setParseError] = useState<string | null>(null);
 
+  // A readable file with a broken structure is fixable in the Clean CSV step.
+  const needsCleaning = Boolean(parseError && rawContent);
+
   const onDrop = useCallback(
     (acceptedFiles: File[], fileRejections: FileRejection[]) => {
       setParseError(null);
 
       if (fileRejections.length > 0) {
+        setRawContent(undefined);
         setUploadFileStatus('rejected');
         setFileContent(undefined);
         setAcceptedFileName(undefined);
@@ -75,13 +58,14 @@ export const UploadFile = ({
         };
         reader.onload = () => {
           const content = reader.result as string;
+          const file = acceptedFiles[0];
+          setRawContent(content);
+          setFileName(file.name);
+          setFileSize(file.size);
           try {
-            parseStringIntoTable(content);
-            const file = acceptedFiles[0];
+            setFileContent(parseCsvStructure(content));
             setUploadFileStatus('accepted');
             setAcceptedFileName(file.name);
-            setFileName(file.name);
-            setFileSize(file.size);
             setParseError(null);
           } catch (error) {
             setUploadFileStatus(undefined);
@@ -93,7 +77,7 @@ export const UploadFile = ({
         reader.readAsText(acceptedFiles[0]);
       }
     },
-    [setFileName, setFileSize]
+    [setFileName, setFileSize, setRawContent]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -102,37 +86,6 @@ export const UploadFile = ({
       'text/csv': ['.csv'],
     },
   });
-
-  const parseStringIntoTable = (content: string): void => {
-    const rows = parseCsv(content, {
-      skip_empty_lines: true,
-      delimiter: ',',
-    }) as string[][];
-
-    if (!rows || rows.length === 0) {
-      throw new Error(
-        'The file is empty or has no valid rows. Please upload a CSV with a header row and at least one data row.'
-      );
-    }
-    const headers = rows[0];
-    if (
-      !headers ||
-      headers.length === 0 ||
-      headers.every((h: string) => !h?.trim())
-    ) {
-      throw new Error(
-        'The file has no column headers. The first row should contain column names.'
-      );
-    }
-
-    const parsedContent: FileContent = {
-      headers,
-      rows: rows.slice(1),
-      totalRows: rows.length - 1,
-    };
-
-    setFileContent(parsedContent);
-  };
 
   return (
     <>
@@ -143,20 +96,6 @@ export const UploadFile = ({
         names. Please add column headers so its easy to map them in the next
         step.
       </div>
-
-      {parseError && (
-        <div className="px-5 mt-4">
-          <Alert variant="destructive">
-            <AlertTitle>Could not read the CSV file</AlertTitle>
-            <AlertDescription>
-              {parseError}
-              <span className="mt-2 block font-medium">
-                Please fix the file and upload it again.
-              </span>
-            </AlertDescription>
-          </Alert>
-        </div>
-      )}
 
       <div className="px-5 my-5">
         <div
@@ -190,20 +129,38 @@ export const UploadFile = ({
             The file is valid. Hit the button below to map columns.
           </p>
         )}
+        {parseError && (
+          <Alert variant="destructive" className="mt-4">
+            <AlertTitle>Could not read the CSV file</AlertTitle>
+            <AlertDescription>
+              {parseError}
+              <span className="mt-2 block font-medium">
+                Fix the file and upload it again, or clean it up right here.
+              </span>
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
 
       <div className="mt-10 flex justify-end">
-        <Button
-          disabled={uploadFileStatus !== 'accepted'}
-          size="sm"
-          variant="default"
-          onClick={() => {
-            onComplete(fileContent);
-          }}
-        >
-          Proceed to map columns
-          <IconArrowRight size={16} />
-        </Button>
+        {needsCleaning ? (
+          <Button size="sm" variant="default" onClick={onClean}>
+            <IconWand size={16} />
+            Clean CSV
+          </Button>
+        ) : (
+          <Button
+            disabled={uploadFileStatus !== 'accepted'}
+            size="sm"
+            variant="default"
+            onClick={() => {
+              onComplete(fileContent);
+            }}
+          >
+            Proceed to map columns
+            <IconArrowRight size={16} />
+          </Button>
+        )}
       </div>
     </>
   );

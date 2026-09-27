@@ -8,12 +8,14 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "@kanak/ui": "*",
+    "@kanak/ui": "workspace:*",
     "@tabler/icons-react": "^3.21.0",
+    "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.13.13",
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.19",
     "fuse.js": "^7.1.0",
+    "lucide-react": "^0.562.0",
     "react-day-picker": "^9.13.0",
     "react-hook-form": "^7.69.0",
     "usehooks-ts": "^3.1.1"

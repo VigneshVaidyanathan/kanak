@@ -1,6 +1,7 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import {
   FormDatePicker,
   FormInput,
@@ -28,6 +29,7 @@ import {
   Spinner,
 } from '@kanak/ui';
 import { IconX } from '@tabler/icons-react';
+import { useMutation } from 'convex/react';
 import { format } from 'date-fns';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
@@ -59,7 +61,7 @@ export function EditTransactionModal({
   bankAccounts,
   onSuccess,
 }: EditTransactionModalProps) {
-  const { token } = useAuthStore();
+  const updateTransaction = useMutation(api.transactions.updateTransaction);
 
   const form = useForm<TransactionFormData>({
     defaultValues: {
@@ -120,37 +122,23 @@ export function EditTransactionModal({
   }, [transaction, open, form]);
 
   const onSubmit = async (data: TransactionFormData) => {
-    if (!transaction || !token) {
+    if (!transaction) {
       return;
     }
 
     try {
-      // Convert Date objects to ISO strings for JSON serialization
-      const dataToSend = {
-        ...data,
-        date: data.date instanceof Date ? data.date.toISOString() : data.date,
-        accountingDate:
-          data.accountingDate instanceof Date
-            ? data.accountingDate.toISOString()
-            : data.accountingDate,
-      };
-
       // Validate with zod schema
-      const validatedData = updateTransactionSchema.parse(dataToSend);
+      const validatedData = updateTransactionSchema.parse(data);
 
-      const response = await fetch(`/api/transactions/${transaction.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(validatedData),
+      const { date, accountingDate, ...rest } = validatedData;
+      await updateTransaction({
+        id: transaction.id as Id<'transactions'>,
+        ...rest,
+        date: date ? new Date(date).getTime() : undefined,
+        accountingDate: accountingDate
+          ? new Date(accountingDate).getTime()
+          : undefined,
       });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to update transaction');
-      }
 
       toast.success('Transaction updated successfully');
       onSuccess();

@@ -15,8 +15,10 @@ import {
   IconCheck,
   IconThumbUp,
   IconUpload,
+  IconWand,
   IconX,
 } from '@tabler/icons-react';
+import { CleanCsv } from './clean-csv';
 import { ColumnMapping } from './column-mapping';
 import { UploadFile } from './upload-file';
 import { VerifyTransactions } from './verify-transactions';
@@ -39,6 +41,11 @@ export const UploadCsvModal = ({ onClose }: { onClose: () => void }) => {
       description: 'Choose a CSV file',
     },
     {
+      icon: <IconWand size={16} />,
+      label: 'Clean CSV',
+      description: 'Fix the file structure',
+    },
+    {
       icon: <IconArrowsShuffle size={16} />,
       label: 'Map columns',
       description: 'Match CSV columns',
@@ -57,14 +64,20 @@ export const UploadCsvModal = ({ onClose }: { onClose: () => void }) => {
     }
   };
 
+  // Valid structure skips the clean step, broken files stop there.
   const handleUploadComplete = (fileContent?: any) => {
     setFileContent(fileContent);
-    setActiveStep(1);
+    setActiveStep(fileContent ? 2 : 1);
+  };
+
+  const handleCleanComplete = (fileContent: any) => {
+    setFileContent(fileContent);
+    setActiveStep(2);
   };
 
   const handleMappingComplete = (transactions: any[]) => {
     setTransactions(transactions);
-    setActiveStep(2);
+    setActiveStep(3);
   };
 
   const handleVerifyComplete = () => {
@@ -80,7 +93,7 @@ export const UploadCsvModal = ({ onClose }: { onClose: () => void }) => {
   return (
     <Dialog open={true} onOpenChange={handleClose}>
       <DialogContent
-        className="sm:max-w-2xl lg:max-w-4xl max-h-[90vh] overflow-y-auto [&>*]:overflow-visible"
+        className="sm:max-w-2xl lg:max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden [&>*]:overflow-visible"
         showCloseButton={false}
       >
         <DialogHeader>
@@ -105,7 +118,7 @@ export const UploadCsvModal = ({ onClose }: { onClose: () => void }) => {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="mt-10">
+        <div className="mt-10 min-w-0">
           <Stepper
             active={activeStep}
             onStepClick={handleStepClick}
@@ -115,21 +128,30 @@ export const UploadCsvModal = ({ onClose }: { onClose: () => void }) => {
             }
           />
 
-          <div className="mt-6">
+          <div className="mt-6 min-w-0">
             {activeStep === 0 && (
-              <UploadFile onComplete={handleUploadComplete} />
+              <UploadFile
+                onComplete={handleUploadComplete}
+                onClean={() => setActiveStep(1)}
+              />
             )}
             {activeStep === 1 && (
+              <CleanCsv
+                onComplete={handleCleanComplete}
+                onBack={() => setActiveStep(0)}
+              />
+            )}
+            {activeStep === 2 && (
               <ColumnMapping
                 fileContent={fileContent}
                 onComplete={handleMappingComplete}
                 onBack={() => setActiveStep(0)}
               />
             )}
-            {activeStep === 2 && (
+            {activeStep === 3 && (
               <VerifyTransactions
                 transactions={transactions}
-                onBack={() => setActiveStep(1)}
+                onBack={() => setActiveStep(2)}
                 onComplete={handleVerifyComplete}
               />
             )}

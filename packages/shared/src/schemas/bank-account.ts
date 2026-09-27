@@ -18,8 +18,9 @@ export const bankAccountSchema = createBankAccountSchema.extend({
   id: z.string(),
   userId: z.string(),
   active: z.boolean(),
-  createdAt: z.date(),
-  updatedAt: z.date(),
+  // Epoch milliseconds, as Convex stores and returns them.
+  createdAt: z.number(),
+  updatedAt: z.number(),
 });
 
 export type BankAccount = z.infer<typeof bankAccountSchema>;

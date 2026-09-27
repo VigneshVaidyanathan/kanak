@@ -1,6 +1,6 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
+import { api } from '@kanak/convex/src/_generated/api';
 import {
   Alert,
   Button,
@@ -17,6 +17,7 @@ import {
   Spinner,
 } from '@kanak/ui';
 import { IconX } from '@tabler/icons-react';
+import { useMutation, useQuery } from 'convex/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -25,7 +26,6 @@ interface CopyBudgetsModalProps {
   onOpenChange: (open: boolean) => void;
   sourceYear: number;
   sourceMonth: number;
-  onSuccess: () => void;
 }
 
 export function CopyBudgetsModal({
@@ -33,9 +33,8 @@ export function CopyBudgetsModal({
   onOpenChange,
   sourceYear,
   sourceMonth,
-  onSuccess,
 }: CopyBudgetsModalProps) {
-  const { token } = useAuthStore();
+  const createOrUpdateBudget = useMutation(api.budgets.createOrUpdateBudget);
   const [targetYear, setTargetYear] = useState<number>(() => {
     const now = new Date();
     const currentYear = now.getFullYear();
@@ -60,8 +59,6 @@ export function CopyBudgetsModal({
   });
 
   const [isCopying, setIsCopying] = useState(false);
-  const [hasExistingBudgets, setHasExistingBudgets] = useState(false);
-  const [isCheckingBudgets, setIsCheckingBudgets] = useState(false);
   const [showOverwriteWarning, setShowOverwriteWarning] = useState(false);
 
   // Generate month options
@@ -103,37 +100,22 @@ export function CopyBudgetsModal({
     return false;
   }, [targetYear, targetMonth]);
 
-  // Check if target month already has budgets
+  // Live: whether the target month already has budgets, so the overwrite
+  // warning stays correct if they change while the dialog is open.
+  const targetBudgets = useQuery(
+    api.budgets.getBudgetsByUserId,
+    open ? { year: targetYear, month: targetMonth } : 'skip'
+  );
+  const sourceBudgets = useQuery(
+    api.budgets.getBudgetsByUserId,
+    open ? { year: sourceYear, month: sourceMonth } : 'skip'
+  );
+  const isCheckingBudgets = open && targetBudgets === undefined;
+  const hasExistingBudgets = (targetBudgets ?? []).length > 0;
+
   useEffect(() => {
-    const checkExistingBudgets = async () => {
-      if (!token || !open) return;
-
-      setIsCheckingBudgets(true);
-      try {
-        const response = await fetch(
-          `/api/budgets?year=${targetYear}&month=${targetMonth}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        if (response.ok) {
-          const budgets = await response.json();
-          const hasBudgets = budgets.length > 0;
-          setHasExistingBudgets(hasBudgets);
-          setShowOverwriteWarning(hasBudgets && isPastMonth);
-        }
-      } catch (error) {
-        console.error('Error checking existing budgets:', error);
-      } finally {
-        setIsCheckingBudgets(false);
-      }
-    };
-
-    checkExistingBudgets();
-  }, [token, targetYear, targetMonth, open, isPastMonth]);
+    setShowOverwriteWarning(hasExistingBudgets && isPastMonth);
+  }, [hasExistingBudgets, isPastMonth]);
 
   // Format source month display
   const sourceMonthDisplay = useMemo(() => {
@@ -154,11 +136,6 @@ export function CopyBudgetsModal({
   }, [targetYear, targetMonth]);
 
   const handleCopy = useCallback(async () => {
-    if (!token) {
-      toast.error('Authentication required');
-      return;
-    }
-
     // If overwriting past month budgets, show warning first
     if (hasExistingBudgets && isPastMonth && !showOverwriteWarning) {
       setShowOverwriteWarning(true);
@@ -167,24 +144,9 @@ export function CopyBudgetsModal({
 
     setIsCopying(true);
     try {
-      // Fetch current month's budgets
-      const response = await fetch(
-        `/api/budgets?year=${sourceYear}&month=${sourceMonth}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+      const nonZeroBudgets = (sourceBudgets ?? []).filter(
+        (budget) => budget.amount > 0
       );
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch budgets');
-      }
-
-      const budgets = await response.json();
-
-      // Filter non-zero budgets
-      const nonZeroBudgets = budgets.filter((budget: any) => budget.amount > 0);
 
       if (nonZeroBudgets.length === 0) {
         toast.info('No budgets to copy');
@@ -192,30 +154,17 @@ export function CopyBudgetsModal({
         return;
       }
 
-      // Copy each budget to target month
-      const copyPromises = nonZeroBudgets.map((budget: any) =>
-        fetch('/api/budgets', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
+      await Promise.all(
+        nonZeroBudgets.map((budget) =>
+          createOrUpdateBudget({
             categoryId: budget.categoryId,
             month: targetMonth,
             year: targetYear,
             amount: budget.amount,
             note: budget.note || '',
-          }),
-        })
+          })
+        )
       );
-
-      const results = await Promise.all(copyPromises);
-      const failed = results.filter((r: Response) => !r.ok);
-
-      if (failed.length > 0) {
-        throw new Error('Some budgets failed to copy');
-      }
 
       toast.success(
         `Successfully copied ${nonZeroBudgets.length} budget${
@@ -223,7 +172,6 @@ export function CopyBudgetsModal({
         } to ${targetMonthDisplay}`
       );
 
-      onSuccess();
       onOpenChange(false);
     } catch (error: any) {
       console.error('Error copying budgets:', error);
@@ -232,9 +180,8 @@ export function CopyBudgetsModal({
       setIsCopying(false);
     }
   }, [
-    token,
-    sourceYear,
-    sourceMonth,
+    sourceBudgets,
+    createOrUpdateBudget,
     targetYear,
     targetMonth,
     targetMonthDisplay,
@@ -242,7 +189,6 @@ export function CopyBudgetsModal({
     isPastMonth,
     showOverwriteWarning,
     onOpenChange,
-    onSuccess,
   ]);
 
   return (

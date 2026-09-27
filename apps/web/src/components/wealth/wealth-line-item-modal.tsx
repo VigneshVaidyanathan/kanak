@@ -1,6 +1,7 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import {
   Button,
   Dialog,
@@ -11,6 +12,7 @@ import {
   FieldLabel,
   Input,
 } from '@kanak/ui';
+import { useMutation } from 'convex/react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -26,7 +28,6 @@ interface WealthLineItemModalProps {
   onOpenChange: (open: boolean) => void;
   lineItem: WealthLineItem | null;
   sectionId: string;
-  onSuccess: () => void;
 }
 
 export function WealthLineItemModal({
@@ -34,9 +35,9 @@ export function WealthLineItemModal({
   onOpenChange,
   lineItem,
   sectionId,
-  onSuccess,
 }: WealthLineItemModalProps) {
-  const { token } = useAuthStore();
+  const createWealthLineItem = useMutation(api.wealth.createWealthLineItem);
+  const updateWealthLineItem = useMutation(api.wealth.updateWealthLineItem);
   const [name, setName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -52,11 +53,6 @@ export function WealthLineItemModal({
     async (e: React.FormEvent) => {
       e.preventDefault();
 
-      if (!token) {
-        toast.error('Authentication required');
-        return;
-      }
-
       if (!name.trim()) {
         toast.error('Line item name is required');
         return;
@@ -69,26 +65,16 @@ export function WealthLineItemModal({
 
       setIsSubmitting(true);
       try {
-        const url = lineItem
-          ? `/api/wealth/line-items/${lineItem.id}`
-          : '/api/wealth/line-items';
-        const method = lineItem ? 'PUT' : 'POST';
-
-        const response = await fetch(url, {
-          method,
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
+        if (lineItem) {
+          await updateWealthLineItem({
+            id: lineItem.id as Id<'wealth_line_items'>,
             name: name.trim(),
-            sectionId: lineItem ? undefined : sectionId,
-          }),
-        });
-
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Failed to save line item');
+          });
+        } else {
+          await createWealthLineItem({
+            sectionId: sectionId as Id<'wealth_sections'>,
+            name: name.trim(),
+          });
         }
 
         toast.success(
@@ -96,7 +82,6 @@ export function WealthLineItemModal({
             ? 'Line item updated successfully'
             : 'Line item created successfully'
         );
-        onSuccess();
         onOpenChange(false);
       } catch (error: any) {
         console.error('Error saving line item:', error);
@@ -105,7 +90,14 @@ export function WealthLineItemModal({
         setIsSubmitting(false);
       }
     },
-    [token, name, lineItem, sectionId, onSuccess, onOpenChange]
+    [
+      name,
+      lineItem,
+      sectionId,
+      createWealthLineItem,
+      updateWealthLineItem,
+      onOpenChange,
+    ]
   );
 
   return (

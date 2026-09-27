@@ -1,14 +1,26 @@
+import { authTables } from '@convex-dev/auth/server';
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
 
 export default defineSchema({
+  ...authTables,
+
+  // authTables.users, inlined so it can carry our own fields. The table name
+  // must stay `users`: ten tables hold v.id('users') and Convex ids are
+  // per-table, so renaming it would orphan every row.
   users: defineTable({
-    email: v.string(),
-    name: v.string(),
-    password: v.string(),
-    role: v.string(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
+    // Convex Auth's own fields.
+    name: v.optional(v.string()),
+    image: v.optional(v.string()),
+    email: v.optional(v.string()),
+    emailVerificationTime: v.optional(v.number()),
+    phone: v.optional(v.string()),
+    phoneVerificationTime: v.optional(v.number()),
+    isAnonymous: v.optional(v.boolean()),
+    // Ours. Optional because Convex Auth inserts users without them.
+    role: v.optional(v.string()),
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
   }).index('by_email', ['email']),
 
   transactions: defineTable({
@@ -22,6 +34,8 @@ export default defineSchema({
     category: v.optional(v.string()),
     notes: v.optional(v.string()),
     isInternal: v.optional(v.boolean()),
+    // Soft delete: absent or false means live. Never hard-delete transactions.
+    isDeleted: v.optional(v.boolean()),
     userId: v.id('users'),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -135,18 +149,9 @@ export default defineSchema({
       'date',
     ]),
 
-  sessions: defineTable({
-    userId: v.id('users'),
-    token: v.string(),
-    expiresAt: v.number(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index('by_token', ['token'])
-    .index('by_userId', ['userId']),
-
   transaction_uploads: defineTable({
     userId: v.id('users'),
+    storageId: v.optional(v.id('_storage')),
     fileName: v.string(),
     fileSize: v.number(),
     totalRows: v.number(),

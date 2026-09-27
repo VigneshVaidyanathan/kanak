@@ -1,4 +1,4 @@
-import { useAuthStore } from '@/store/auth-store';
+import { api } from '@kanak/convex/src/_generated/api';
 import {
   Badge,
   Card,
@@ -9,7 +9,8 @@ import {
   CardTitle,
 } from '@kanak/ui';
 import { IconTrendingDown, IconTrendingUp } from '@tabler/icons-react';
-import { useEffect, useState } from 'react';
+import { useQuery } from 'convex/react';
+import { useMemo } from 'react';
 
 interface BudgetStatsProps {
   totalIncome: number;
@@ -24,10 +25,13 @@ export function BudgetStats({
   year,
   month,
 }: BudgetStatsProps) {
-  const { token } = useAuthStore();
-  const [previousIncome, setPreviousIncome] = useState<number | null>(null);
-  const [previousExpense, setPreviousExpense] = useState<number | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const categories = useQuery(api.categories.getCategoriesByUserId, {});
+  // title -> type, for splitting the previous month's budgets into income and
+  // expense. Budgets still come from the REST route.
+  const categoryTypes = useMemo(
+    () => new Map((categories ?? []).map((cat) => [cat.title, cat.type])),
+    [categories]
+  );
   // Calculate previous month
   const getPreviousMonth = (y: number, m: number): [number, number] => {
     let prevYear = y;
@@ -39,77 +43,28 @@ export function BudgetStats({
     return [prevYear, prevMonth];
   };
 
-  // Fetch previous month's budgets
-  useEffect(() => {
-    const fetchPreviousMonthData = async (): Promise<void> => {
-      if (!token) return;
+  // Previous month's budgets, for the change-vs-last-month figures.
+  const [prevYear, prevMonth] = getPreviousMonth(year, month);
+  const previousBudgets = useQuery(api.budgets.getBudgetsByUserId, {
+    year: prevYear,
+    month: prevMonth,
+  });
+  const isLoading = previousBudgets === undefined || categories === undefined;
 
-      const [prevYear, prevMonth] = getPreviousMonth(year, month);
-      setIsLoading(true);
+  const { previousIncome, previousExpense } = useMemo(() => {
+    if (!previousBudgets) {
+      return { previousIncome: null, previousExpense: null };
+    }
+    const sumByType = (type: string) =>
+      previousBudgets
+        .filter((budget) => categoryTypes.get(budget.categoryId) === type)
+        .reduce((sum, budget) => sum + budget.amount, 0);
 
-      try {
-        const response = await fetch(
-          `/api/budgets?year=${prevYear}&month=${prevMonth}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        if (response.ok) {
-          const budgets = await response.json();
-
-          // We need to distinguish between income and expense
-          // Fetch categories to properly calculate
-          const categoriesResponse = await fetch('/api/categories', {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
-
-          if (categoriesResponse.ok) {
-            const categories = await categoriesResponse.json();
-            const categoryMap = new Map(
-              categories.map((cat: { title: string; type: string }) => [
-                cat.title,
-                cat.type,
-              ])
-            );
-
-            const prevIncome = budgets
-              .filter(
-                (b: { categoryId: string }) =>
-                  categoryMap.get(b.categoryId) === 'income'
-              )
-              .reduce(
-                (sum: number, b: { amount: number }) => sum + b.amount,
-                0
-              );
-
-            const prevExpense = budgets
-              .filter(
-                (b: { categoryId: string }) =>
-                  categoryMap.get(b.categoryId) === 'expense'
-              )
-              .reduce(
-                (sum: number, b: { amount: number }) => sum + b.amount,
-                0
-              );
-
-            setPreviousIncome(prevIncome);
-            setPreviousExpense(prevExpense);
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching previous month data:', error);
-      } finally {
-        setIsLoading(false);
-      }
+    return {
+      previousIncome: sumByType('income'),
+      previousExpense: sumByType('expense'),
     };
-
-    fetchPreviousMonthData();
-  }, [token, year, month]);
+  }, [previousBudgets, categoryTypes]);
 
   const formatCurrency = (amount: number): string => {
     return new Intl.NumberFormat('en-IN', {

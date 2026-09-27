@@ -1,6 +1,7 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import {
   Button,
   Dialog,
@@ -11,6 +12,7 @@ import {
   Spinner,
 } from '@kanak/ui';
 import { IconX } from '@tabler/icons-react';
+import { useMutation } from 'convex/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -18,37 +20,28 @@ interface DeleteSectionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   section: { id: string; name: string; lineItemCount: number } | null;
-  onSuccess: () => void;
 }
 
 export function DeleteSectionModal({
   open,
   onOpenChange,
   section,
-  onSuccess,
 }: DeleteSectionModalProps) {
-  const { token } = useAuthStore();
+  const softDeleteWealthSection = useMutation(
+    api.wealth.softDeleteWealthSection
+  );
   const [loading, setLoading] = useState(false);
 
   const handleDelete = async () => {
-    if (!section || !token) return;
+    if (!section) return;
 
     try {
       setLoading(true);
-      const response = await fetch(`/api/wealth/sections/${section.id}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      await softDeleteWealthSection({
+        id: section.id as Id<'wealth_sections'>,
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete section');
-      }
-
       toast.success('Section deleted successfully');
-      onSuccess();
       onOpenChange(false);
     } catch (error: any) {
       console.error('Error deleting section:', error);
