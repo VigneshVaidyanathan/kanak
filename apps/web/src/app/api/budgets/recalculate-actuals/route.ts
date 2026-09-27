@@ -2,7 +2,6 @@ import { verifyAuth } from '@/lib/auth';
 import { convexAuthNextjsToken } from '@convex-dev/auth/nextjs/server';
 import {
   getAuthedConvexClient,
-  getConvexClient,
   getTransactionsByAccountingDateRange,
 } from '@kanak/api';
 import { api } from '@kanak/convex/src/_generated/api';
@@ -50,8 +49,6 @@ export async function POST(request: NextRequest) {
       categories.map((cat: { title: string }) => [cat.title, cat])
     );
 
-    const convex = await getConvexClient();
-
     // Calculate actuals by category
     const actualsByCategory: Record<string, number> = {};
 
@@ -78,8 +75,7 @@ export async function POST(request: NextRequest) {
         const actualAmount = Math.abs(actual);
 
         // Update or create budget with actual using Convex mutation
-        return convex.mutation(api.budgets.updateBudgetActual, {
-          userId: authPayload.userId as Id<'users'>,
+        return authedConvex.mutation(api.budgets.updateBudgetActual, {
           categoryId,
           year,
           month,
@@ -88,13 +84,9 @@ export async function POST(request: NextRequest) {
       });
 
     // Also set actual to 0 for categories that have budgets but no transactions
-    const existingBudgets = await convex.query(
-      api.budgets.getBudgetsByUserIdYearMonth,
-      {
-        userId: authPayload.userId as Id<'users'>,
-        year,
-        month,
-      }
+    const existingBudgets = await authedConvex.query(
+      api.budgets.getBudgetsByUserId,
+      { year, month }
     );
 
     const categoriesWithTransactions = new Set(Object.keys(actualsByCategory));
@@ -103,8 +95,7 @@ export async function POST(request: NextRequest) {
     );
 
     const zeroPromises = categoriesToZero.map((budget: any) =>
-      convex.mutation(api.budgets.updateBudgetActual, {
-        userId: authPayload.userId as Id<'users'>,
+      authedConvex.mutation(api.budgets.updateBudgetActual, {
         categoryId: budget.categoryId,
         year,
         month,

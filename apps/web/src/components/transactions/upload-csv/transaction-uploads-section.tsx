@@ -92,16 +92,27 @@ export function TransactionUploadsSection() {
         accessorKey: 'fileName',
         meta: {
           header: 'File Name',
+          // ponytail: flex lets the name column absorb leftover width
+          flex: true,
+          cellClassname: 'min-w-[320px]',
+          headerClassname: 'min-w-[320px]',
         },
-        size: 250,
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="File Name" />
         ),
         cell: ({ row }) => {
           return (
-            <div className="flex items-center gap-2">
-              <IconFileUpload size={16} className="text-muted-foreground" />
-              <div className="text-sm font-medium">{row.original.fileName}</div>
+            <div className="flex min-w-0 items-center gap-2">
+              <IconFileUpload
+                size={16}
+                className="shrink-0 text-muted-foreground"
+              />
+              <div
+                className="truncate text-sm font-medium"
+                title={row.original.fileName}
+              >
+                {row.original.fileName}
+              </div>
             </div>
           );
         },

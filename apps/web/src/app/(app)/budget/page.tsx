@@ -30,7 +30,7 @@ import {
   IconChevronDown,
   IconCopy,
 } from '@tabler/icons-react';
-import { useQuery } from 'convex/react';
+import { useMutation, useQuery } from 'convex/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -96,7 +96,6 @@ export default function BudgetPage() {
     () => (categoriesResult ?? []) as Category[],
     [categoriesResult]
   );
-  const [budgets, setBudgets] = useState<Budget[]>([]);
   const [monthTransactions, setMonthTransactions] = useState<Transaction[]>([]);
   const [budgetRows, setBudgetRows] = useState<BudgetRow[]>([]);
   const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
@@ -119,21 +118,15 @@ export default function BudgetPage() {
     return [y, m];
   }, [selectedMonth]);
 
-  // Fetch budgets
-  const fetchBudgets = useCallback(async (): Promise<void> => {
-    if (!token) return;
-
-    const response = await fetch(`/api/budgets?year=${year}&month=${month}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      setBudgets(data);
-    }
-  }, [token, year, month]);
+  const budgetsResult = useQuery(api.budgets.getBudgetsByUserId, {
+    year,
+    month,
+  });
+  const budgets = useMemo(
+    () => (budgetsResult ?? []) as Budget[],
+    [budgetsResult]
+  );
+  const createOrUpdateBudget = useMutation(api.budgets.createOrUpdateBudget);
 
   // Fetch transactions for the selected month (by accounting date) from API
   const fetchMonthTransactions = useCallback(async (): Promise<void> => {
@@ -271,29 +264,17 @@ export default function BudgetPage() {
     setIsSavingAll(true);
     try {
       // Save all changed budgets
-      const savePromises = changedRows.map((row) =>
-        fetch('/api/budgets', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
+      await Promise.all(
+        changedRows.map((row) =>
+          createOrUpdateBudget({
             categoryId: row.categoryId,
             month: row.month,
             year: row.year,
             amount: row.budget,
             note: row.note,
-          }),
-        })
+          })
+        )
       );
-
-      const results = await Promise.all(savePromises);
-      const failed = results.filter((r) => !r.ok);
-
-      if (failed.length > 0) {
-        throw new Error('Some budgets failed to save');
-      }
 
       // Update all rows to mark as saved
       setBudgetRows((prev) =>
@@ -310,16 +291,13 @@ export default function BudgetPage() {
           changedRows.length > 1 ? 's' : ''
         }`
       );
-
-      // Refresh budgets to ensure sync
-      fetchBudgets();
     } catch (error: any) {
       console.error('Error saving budgets:', error);
       toast.error(error.message || 'Failed to save budgets');
     } finally {
       setIsSavingAll(false);
     }
-  }, [token, budgetRows, fetchBudgets]);
+  }, [token, budgetRows, createOrUpdateBudget]);
 
   // Handle recalculate actuals (page-level loader)
   const handleRecalculateActuals = useCallback(async (): Promise<void> => {
@@ -349,8 +327,8 @@ export default function BudgetPage() {
 
       toast.success('Actuals recalculated successfully');
 
-      // Refresh budgets and month transactions
-      await Promise.all([fetchBudgets(), fetchMonthTransactions()]);
+      // Budgets are a live query; only the month's transactions need refetching.
+      await fetchMonthTransactions();
     } catch (error: unknown) {
       const err = error as { message?: string };
       console.error('Error recalculating actuals:', error);
@@ -358,7 +336,7 @@ export default function BudgetPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, year, month, fetchBudgets, fetchMonthTransactions]);
+  }, [token, year, month, fetchMonthTransactions]);
 
   // Initial data fetch (page-level loader)
   useEffect(() => {
@@ -374,7 +352,7 @@ export default function BudgetPage() {
                 setAuth(parsed.state.user, parsed.state.token);
               }
               setLoading(true);
-              await Promise.all([fetchBudgets(), fetchMonthTransactions()]);
+              await fetchMonthTransactions();
               setLoading(false);
               return;
             }
@@ -391,7 +369,7 @@ export default function BudgetPage() {
 
       if (isAuthenticated || token) {
         setLoading(true);
-        await Promise.all([fetchBudgets(), fetchMonthTransactions()]);
+        await fetchMonthTransactions();
         setLoading(false);
       }
     };
@@ -425,18 +403,11 @@ export default function BudgetPage() {
 
     const fetchData = async (): Promise<void> => {
       setLoading(true);
-      await Promise.all([fetchBudgets(), fetchMonthTransactions()]);
+      await fetchMonthTransactions();
       setLoading(false);
     };
     fetchData();
-  }, [
-    year,
-    month,
-    token,
-    categories.length,
-    fetchBudgets,
-    fetchMonthTransactions,
-  ]);
+  }, [year, month, token, categories.length, fetchMonthTransactions]);
 
   // Create category map for quick lookup
   const categoryMap = useMemo(() => {
@@ -640,9 +611,6 @@ export default function BudgetPage() {
         onOpenChange={setIsCopyModalOpen}
         sourceYear={year}
         sourceMonth={month}
-        onSuccess={() => {
-          fetchBudgets();
-        }}
       />
 
       {/* Stats cards at the top */}
