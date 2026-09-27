@@ -2,8 +2,12 @@ import { verifyAuth } from '@/lib/auth';
 import {
   getWealthEntriesByDate,
   createOrUpdateWealthEntries,
+  updateWealthEntriesDate,
 } from '@kanak/api';
-import { createWealthEntriesSchema } from '@kanak/shared';
+import {
+  createWealthEntriesSchema,
+  updateWealthEntriesDateSchema,
+} from '@kanak/shared';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -82,6 +86,40 @@ export async function POST(request: NextRequest) {
       );
     }
     console.error('Create/Update wealth entries error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const authPayload = await verifyAuth(request);
+    const body = await request.json();
+    const validated = updateWealthEntriesDateSchema.parse(body);
+
+    const count = await updateWealthEntriesDate(
+      authPayload.userId,
+      validated.oldDate,
+      validated.newDate
+    );
+
+    return NextResponse.json({ updated: count });
+  } catch (error: any) {
+    if (
+      error.message === 'No authentication token provided' ||
+      error.message === 'Invalid or expired token'
+    ) {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+    if (error.name === 'ZodError') {
+      return NextResponse.json(
+        { error: 'Invalid input', details: error.errors },
+        { status: 400 }
+      );
+    }
+    console.error('Update wealth entries date error:', error);
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

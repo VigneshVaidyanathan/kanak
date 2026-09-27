@@ -13,6 +13,7 @@ import {
   ChartTooltipContent,
 } from '@kanak/ui';
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
+import { colorAt } from './chart-palette';
 
 interface LineItemSeries {
   name: string;
@@ -36,11 +37,8 @@ export function LineItemsChart({ data, lineItems }: LineItemsChartProps) {
   };
 
   const chartConfig = lineItems.reduce(
-    (acc, item) => {
-      acc[item.name] = {
-        label: item.name,
-        color: item.color || 'var(--color-chart-1)',
-      };
+    (acc, item, index) => {
+      acc[item.name] = { label: item.name, color: colorAt(index) };
       return acc;
     },
     {} as Record<string, { label: string; color: string }>
@@ -75,7 +73,7 @@ export function LineItemsChart({ data, lineItems }: LineItemsChartProps) {
       <CardContent>
         <ChartContainer config={chartConfig} className="h-[400px]">
           <LineChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" />
+            <CartesianGrid vertical={false} stroke="var(--color-border)" />
             <XAxis
               dataKey="date"
               tickFormatter={(value) => {
@@ -104,15 +102,19 @@ export function LineItemsChart({ data, lineItems }: LineItemsChartProps) {
                 />
               }
             />
-            {lineItems.map((lineItem) => (
+            {lineItems.map((lineItem, index) => (
               <Line
                 key={lineItem.name}
                 type="monotone"
                 dataKey={lineItem.name}
-                stroke={lineItem.color || 'var(--color-chart-1)'}
+                stroke={colorAt(index)}
                 strokeWidth={2}
-                dot={{ r: 3 }}
-                activeDot={{ r: 5 }}
+                dot={false}
+                activeDot={{
+                  r: 4,
+                  stroke: 'var(--color-card)',
+                  strokeWidth: 2,
+                }}
               />
             ))}
             <ChartLegend

@@ -1,5 +1,6 @@
 'use client';
 
+import { install401Redirect } from '@/lib/fetch-401';
 import { useAuthStore } from '@/store/auth-store';
 import { Spinner } from '@kanak/ui';
 import { usePathname, useRouter } from 'next/navigation';
@@ -24,6 +25,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { token, isAuthenticated, initializeAuth, validateToken, clearAuth } =
     useAuthStore();
   const [isChecking, setIsChecking] = useState(true);
+
+  // Any /api 401 anywhere in the app clears auth and returns to login.
+  install401Redirect();
 
   useEffect(() => {
     const checkAuth = async () => {

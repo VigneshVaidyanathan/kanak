@@ -66,6 +66,11 @@ import {
 } from '@tanstack/react-table';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  DateRangeFilter,
+  getPresetRange,
+  type TransactionDateRange,
+} from '@/components/transactions/date-range-filter';
 import { toast } from 'sonner';
 
 export default function TransactionsPage() {
@@ -109,17 +114,19 @@ export default function TransactionsPage() {
     return viewParam === 'month' ? 'month' : 'table';
   }, [searchParams]);
 
-  // Initialize year filter from URL (default to current year)
-  const selectedYear = useMemo<number | 'all'>(() => {
-    const yearParam = searchParams.get('year');
-    if (yearParam === 'all') {
-      return 'all';
+  // Single date filter from URL (?from=YYYY-MM-DD&to=YYYY-MM-DD), default: this month
+  const dateRange = useMemo<TransactionDateRange>(() => {
+    const from = searchParams.get('from');
+    const to = searchParams.get('to');
+    if (from && to) {
+      const [fy, fm, fd] = from.split('-').map(Number);
+      const [ty, tm, td] = to.split('-').map(Number);
+      return {
+        from: new Date(fy, fm - 1, fd),
+        to: new Date(ty, tm - 1, td, 23, 59, 59, 999),
+      };
     }
-    if (yearParam) {
-      return parseInt(yearParam, 10);
-    }
-    // Default to current year
-    return new Date().getFullYear();
+    return getPresetRange('this-month');
   }, [searchParams]);
 
   // Initialize month for month view from URL (format: YYYY-MM)
@@ -189,19 +196,6 @@ export default function TransactionsPage() {
       }
     }
 
-    // Parse date range filter
-    const dateFrom = searchParams.get('filter_date_from');
-    const dateTo = searchParams.get('filter_date_to');
-    if (dateFrom && dateTo) {
-      filters.push({
-        id: 'date',
-        value: {
-          from: new Date(dateFrom),
-          to: new Date(dateTo),
-        },
-      });
-    }
-
     // Parse amount range filter
     const amountMin = searchParams.get('filter_amount_min');
     const amountMax = searchParams.get('filter_amount_max');
@@ -229,8 +223,6 @@ export default function TransactionsPage() {
         'filter_reports',
         'filter_category',
         'filter_bankAccount',
-        'filter_date_from',
-        'filter_date_to',
         'filter_amount_min',
         'filter_amount_max',
       ];
@@ -250,20 +242,6 @@ export default function TransactionsPage() {
         } else if (filter.id === 'bankAccount' && Array.isArray(filter.value)) {
           const values = (filter.value as string[]).join(',');
           if (values) params.set('filter_bankAccount', values);
-        } else if (filter.id === 'date' && typeof filter.value === 'object') {
-          const dateRange = filter.value as { from?: Date; to?: Date };
-          if (dateRange.from) {
-            params.set(
-              'filter_date_from',
-              dateRange.from.toISOString().split('T')[0]
-            );
-          }
-          if (dateRange.to) {
-            params.set(
-              'filter_date_to',
-              dateRange.to.toISOString().split('T')[0]
-            );
-          }
         } else if (filter.id === 'amount' && typeof filter.value === 'object') {
           const amountRange = filter.value as {
             min?: number;
@@ -341,19 +319,17 @@ export default function TransactionsPage() {
     [router, searchParams]
   );
 
-  // Handle year filter change
-  const handleYearChange = useCallback(
-    (year: string) => {
+  // Handle date range filter change
+  const handleDateRangeChange = useCallback(
+    (range: TransactionDateRange) => {
+      const key = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+          d.getDate()
+        ).padStart(2, '0')}`;
       const params = new URLSearchParams(searchParams.toString());
-      if (year === 'all' || !year) {
-        params.set('year', 'all');
-      } else {
-        params.set('year', year);
-      }
-      const newUrl = params.toString()
-        ? `/transactions?${params.toString()}`
-        : '/transactions';
-      router.push(newUrl, { scroll: false });
+      params.set('from', key(range.from));
+      params.set('to', key(range.to));
+      router.push(`/transactions?${params.toString()}`, { scroll: false });
     },
     [router, searchParams]
   );
@@ -386,22 +362,6 @@ export default function TransactionsPage() {
     },
     [router, searchParams, selectedMonth]
   );
-
-  // Set current year in URL if not present (only on initial load)
-  useEffect(() => {
-    const yearParam = searchParams.get('year');
-    if (!yearParam) {
-      const currentYear = new Date().getFullYear();
-      const params = new URLSearchParams(searchParams.toString());
-      params.set('year', currentYear.toString());
-      const newUrl = `/transactions?${params.toString()}`;
-      // Defer router update to avoid updating Router during render
-      setTimeout(() => {
-        router.replace(newUrl, { scroll: false });
-      }, 0);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run on mount
 
   useEffect(() => {
     const checkAuthAndFetch = () => {
@@ -626,23 +586,18 @@ export default function TransactionsPage() {
     [handleEditTransaction, handleDeleteTransaction, handleApplyRulesToFiltered]
   );
 
-  // Filter transactions by year
+  // Filter transactions by the selected date range (accountingDate)
   const filteredTransactionsByYear = useMemo(() => {
-    let filtered = transactions;
-
-    // Filter by year using accountingDate
-    if (selectedYear !== 'all') {
-      filtered = filtered.filter((t: Transaction) => {
-        const accountingDate = (t as any).accountingDate
-          ? new Date((t as any).accountingDate)
-          : new Date(t.date);
-        const transactionYear = accountingDate.getFullYear();
-        return transactionYear === selectedYear;
-      });
-    }
-
-    return filtered;
-  }, [transactions, selectedYear]);
+    const from = dateRange.from.getTime();
+    const to = dateRange.to.getTime();
+    return transactions.filter((t: Transaction) => {
+      const accountingDate = (t as any).accountingDate
+        ? new Date((t as any).accountingDate)
+        : new Date(t.date);
+      const time = accountingDate.getTime();
+      return time >= from && time <= to;
+    });
+  }, [transactions, dateRange]);
 
   // Group transactions by month for month view using accountingDate
   const transactionsByMonth = useMemo(() => {
@@ -715,10 +670,19 @@ export default function TransactionsPage() {
   const summarySection = useCallback(
     (rows: Transaction[]) => {
       const totalTransactions = rows.length;
-      const debitTotal = rows
+      // ponytail: intra-transfer categories are money moving between own accounts, not spend
+      const intraTransferTitles = new Set(
+        categories
+          .filter((c) => c.type === 'intra-transfer')
+          .map((c) => c.title)
+      );
+      const spendRows = rows.filter(
+        (t) => !t.category || !intraTransferTitles.has(t.category)
+      );
+      const debitTotal = spendRows
         .filter((t) => t.type === 'debit')
         .reduce((sum, t) => sum + Number(t.amount), 0);
-      const creditTotal = rows
+      const creditTotal = spendRows
         .filter((t) => t.type === 'credit')
         .reduce((sum, t) => sum + Number(t.amount), 0);
 
@@ -805,7 +769,7 @@ export default function TransactionsPage() {
         </div>
       );
     },
-    [viewType, selectedMonth, handleMonthNavigation]
+    [viewType, selectedMonth, handleMonthNavigation, categories]
   );
 
   // Footer row renderer - sums the amount column
@@ -971,11 +935,6 @@ export default function TransactionsPage() {
         enableHiding: false,
         meta: {
           header: 'Date',
-          filter: {
-            type: 'DATE_RANGE',
-            text: 'Date',
-            placeholder: 'Select date range...',
-          },
         },
         minSize: 100,
         size: 120,
@@ -1098,8 +1057,8 @@ export default function TransactionsPage() {
             placeholder: 'Filter by bank account...',
           },
         },
-        size: 150,
-        minSize: 150,
+        size: 190,
+        minSize: 190,
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Bank Account" />
         ),
@@ -1158,9 +1117,9 @@ export default function TransactionsPage() {
           header: 'Description',
           flex: true,
           wrap: true,
-          maxSize: 450,
+          maxSize: 340,
         },
-        minSize: 200,
+        minSize: 180,
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Description" />
         ),
@@ -1366,25 +1325,7 @@ export default function TransactionsPage() {
               {selectedTransactions.length !== 1 ? 's' : ''} selected
             </div>
           )}
-          <Select
-            value={selectedYear === 'all' ? 'all' : selectedYear.toString()}
-            onValueChange={handleYearChange}
-          >
-            <SelectTrigger className="w-[120px]" size="sm">
-              <SelectValue placeholder="Select Year" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Years</SelectItem>
-              {Array.from({ length: 5 }, (_, i) => {
-                const year = new Date().getFullYear() - i;
-                return (
-                  <SelectItem key={year} value={year.toString()}>
-                    {year}
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
+          <DateRangeFilter value={dateRange} onChange={handleDateRangeChange} />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">

@@ -14,22 +14,37 @@ import {
   PopoverTrigger,
 } from '@kanak/ui';
 import { CalendarIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+
+export type WealthDatePickerModalScope = 'add' | 'edit';
 
 interface WealthDatePickerModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onDateSelect: (date: Date) => void;
+  scope?: WealthDatePickerModalScope;
+  /** When scope is 'edit', the date being edited (UTC). */
+  initialDate?: Date | null;
 }
 
 export function WealthDatePickerModal({
   open,
   onOpenChange,
   onDateSelect,
+  scope = 'add',
+  initialDate = null,
 }: WealthDatePickerModalProps) {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
 
-  const handleAdd = () => {
+  useEffect(() => {
+    if (open && scope === 'edit' && initialDate) {
+      setSelectedDate(initialDate);
+    } else if (open && scope === 'add') {
+      setSelectedDate(undefined);
+    }
+  }, [open, scope, initialDate]);
+
+  const handleSubmit = (): void => {
     if (selectedDate) {
       onDateSelect(selectedDate);
       setSelectedDate(undefined);
@@ -37,11 +52,13 @@ export function WealthDatePickerModal({
     }
   };
 
+  const isEdit = scope === 'edit';
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Date</DialogTitle>
+          <DialogTitle>{isEdit ? 'Edit Date' : 'Add Date'}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <Field>
@@ -85,8 +102,12 @@ export function WealthDatePickerModal({
             >
               Cancel
             </Button>
-            <Button type="button" onClick={handleAdd} disabled={!selectedDate}>
-              Add Date
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!selectedDate}
+            >
+              {isEdit ? 'Save' : 'Add Date'}
             </Button>
           </div>
         </div>

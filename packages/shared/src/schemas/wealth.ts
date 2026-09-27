@@ -99,6 +99,19 @@ export type CreateWealthEntriesInput = z.infer<
   typeof createWealthEntriesSchema
 >;
 
+const dateKeySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD');
+
+export const updateWealthEntriesDateSchema = z.object({
+  oldDate: dateKeySchema,
+  newDate: dateKeySchema,
+});
+
+export type UpdateWealthEntriesDateInput = z.infer<
+  typeof updateWealthEntriesDateSchema
+>;
+
 export const wealthEntrySchema = createWealthEntrySchema.extend({
   id: z.string(),
   userId: z.string(),

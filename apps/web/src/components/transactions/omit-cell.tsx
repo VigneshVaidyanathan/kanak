@@ -3,7 +3,7 @@
 import { Transaction } from '@kanak/shared';
 import { Switch } from '@kanak/ui';
 import { cn } from '@kanak/ui/lib/utils';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 interface OmitCellProps {
@@ -14,7 +14,6 @@ interface OmitCellProps {
 
 export function OmitCell({ transaction, token, onUpdate }: OmitCellProps) {
   const [isInternal, setIsInternal] = useState(transaction.isInternal || false);
-  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Update local state when transaction data changes
   useEffect(() => {
@@ -25,13 +24,9 @@ export function OmitCell({ transaction, token, onUpdate }: OmitCellProps) {
     // Update local state immediately for UI feedback
     setIsInternal(!checked);
 
-    // Clear existing timeout
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
-    }
-
     // Set new timeout for API call (1 second debounce)
-    debounceTimeoutRef.current = setTimeout(async () => {
+    // ponytail: no debounce — this is one discrete click.
+    void (async () => {
       if (!token) {
         console.error('No authentication token available');
         setIsInternal(transaction.isInternal || false);
@@ -61,17 +56,8 @@ export function OmitCell({ transaction, token, onUpdate }: OmitCellProps) {
         // Revert local state on error
         setIsInternal(!checked);
       }
-    }, 400);
+    })();
   };
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
-    };
-  }, []);
 
   return (
     <div

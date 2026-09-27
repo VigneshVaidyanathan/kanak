@@ -1,7 +1,7 @@
 'use client';
 
 import { Category, Transaction } from '@kanak/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { CategoryCombobox } from './category-combobox';
 
@@ -18,7 +18,6 @@ export function CategoryCell({
   token,
   onUpdate,
 }: CategoryCellProps) {
-  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [localCategory, setLocalCategory] = useState<string | undefined>(
     transaction.category || undefined
   );
@@ -33,13 +32,9 @@ export function CategoryCell({
       // Update local state immediately for UI feedback
       setLocalCategory(categoryTitle);
 
-      // Clear existing timeout
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
-
-      // Set new timeout for API call
-      debounceTimeoutRef.current = setTimeout(async () => {
+      // ponytail: no debounce — picking a category is one discrete click,
+      // debouncing it only added latency.
+      void (async () => {
         if (!token) {
           console.error('No authentication token available');
           setLocalCategory(transaction.category || undefined);
@@ -79,19 +74,10 @@ export function CategoryCell({
             description: 'An error occurred. Please try again',
           });
         }
-      }, 500);
+      })();
     },
     [transaction.id, transaction.category, token, onUpdate]
   );
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
-    };
-  }, []);
 
   return (
     <CategoryCombobox

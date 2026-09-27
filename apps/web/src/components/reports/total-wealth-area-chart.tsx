@@ -11,6 +11,7 @@ import {
   ChartTooltipContent,
 } from '@kanak/ui';
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+import { colorAt } from './chart-palette';
 
 interface TotalWealthAreaChartProps {
   data: Array<{ date: string; total: number }>;
@@ -60,7 +61,7 @@ export function TotalWealthAreaChart({
   const chartConfig = {
     total: {
       label: 'Total Wealth',
-      color: '#000000',
+      color: colorAt(0),
     },
   };
 
@@ -98,11 +99,11 @@ export function TotalWealthAreaChart({
           <AreaChart data={data}>
             <defs>
               <linearGradient id="fillTotal" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#000000" stopOpacity={0.8} />
-                <stop offset="95%" stopColor="#000000" stopOpacity={0.1} />
+                <stop offset="5%" stopColor={colorAt(0)} stopOpacity={0.35} />
+                <stop offset="95%" stopColor={colorAt(0)} stopOpacity={0.02} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <CartesianGrid vertical={false} stroke="var(--color-border)" />
             <XAxis
               dataKey="date"
               tickLine={false}
@@ -138,10 +139,11 @@ export function TotalWealthAreaChart({
             <Area
               type="natural"
               dataKey="total"
-              stroke="#000000"
+              stroke={colorAt(0)}
+              strokeWidth={2}
               fill="url(#fillTotal)"
-              dot={{ fill: '#000000', r: 2 }}
-              activeDot={{ r: 4 }}
+              dot={false}
+              activeDot={{ r: 4, stroke: 'var(--color-card)', strokeWidth: 2 }}
             />
           </AreaChart>
         </ChartContainer>

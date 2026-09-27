@@ -8,8 +8,8 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "@kanak/utils": "*",
-    "@kanak/convex": "*",
+    "@kanak/utils": "workspace:*",
+    "@kanak/convex": "workspace:*",
     "convex": "^1.11.0",
     "bcryptjs": "^2.4.3"
   },

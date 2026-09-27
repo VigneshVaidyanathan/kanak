@@ -11,7 +11,7 @@ import {
 } from '@kanak/ui';
 import { IconChevronDown } from '@tabler/icons-react';
 import { Check } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 interface BankAccountCellProps {
@@ -27,7 +27,6 @@ export function BankAccountCell({
   token,
   onUpdate,
 }: BankAccountCellProps) {
-  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [localBankAccount, setLocalBankAccount] = useState<string | undefined>(
     transaction.bankAccount || undefined
   );
@@ -42,13 +41,9 @@ export function BankAccountCell({
       // Update local state immediately for UI feedback
       setLocalBankAccount(accountName);
 
-      // Clear existing timeout
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
-
       // Set new timeout for API call
-      debounceTimeoutRef.current = setTimeout(async () => {
+      // ponytail: no debounce — this is one discrete click.
+      void (async () => {
         if (!token) {
           console.error('No authentication token available');
           setLocalBankAccount(transaction.bankAccount || undefined);
@@ -88,19 +83,10 @@ export function BankAccountCell({
             description: 'An error occurred. Please try again',
           });
         }
-      }, 500);
+      })();
     },
     [transaction.id, transaction.bankAccount, token, onUpdate]
   );
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const selectedBankAccount = bankAccounts.find(
     (account) => account.name === localBankAccount

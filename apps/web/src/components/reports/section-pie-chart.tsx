@@ -13,6 +13,7 @@ import {
 } from '@kanak/ui';
 import dayjs from 'dayjs';
 import { Cell, Pie, PieChart } from 'recharts';
+import { colorAt } from './chart-palette';
 
 interface LineItemData {
   name: string;
@@ -26,11 +27,7 @@ interface SectionPieChartProps {
   data: LineItemData[];
 }
 
-export function SectionPieChart({
-  sectionName,
-  sectionColor,
-  data,
-}: SectionPieChartProps) {
+export function SectionPieChart({ sectionName, data }: SectionPieChartProps) {
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -40,27 +37,10 @@ export function SectionPieChart({
     }).format(value);
   };
 
-  // Define a palette of contrasting colors for line items
-  const colorPalette = [
-    'var(--color-chart-1)',
-    'var(--color-chart-2)',
-    'var(--color-chart-3)',
-    'var(--color-chart-4)',
-    'var(--color-chart-5)',
-    '#3B82F6', // Blue
-    '#10B981', // Green
-    '#F59E0B', // Amber
-    '#EF4444', // Red
-    '#8B5CF6', // Purple
-  ];
-
-  // Always assign different colors from palette, ignoring any color in the data
+  // Palette slots are assigned in data order, ignoring any stored colour.
   const chartConfig = data.reduce(
     (acc, item, index) => {
-      acc[item.name] = {
-        label: item.name,
-        color: colorPalette[index % colorPalette.length],
-      };
+      acc[item.name] = { label: item.name, color: colorAt(index) };
       return acc;
     },
     {} as Record<string, { label: string; color: string }>
@@ -123,6 +103,9 @@ export function SectionPieChart({
               cy="50%"
               outerRadius={100}
               innerRadius={60}
+              paddingAngle={2}
+              stroke="var(--color-card)"
+              strokeWidth={2}
             >
               {data.map((entry, index) => (
                 <Cell

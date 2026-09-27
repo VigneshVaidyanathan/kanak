@@ -14,6 +14,7 @@ import {
 } from '@kanak/ui';
 import dayjs from 'dayjs';
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+import { colorAt } from './chart-palette';
 
 interface SectionData {
   name: string;
@@ -54,12 +55,10 @@ export function TotalWealthChart({ data, sections }: TotalWealthChartProps) {
     return `₹${value}`;
   };
 
+  // Palette slots in section order; stored section colours are too pale to read.
   const chartConfig = sections.reduce(
-    (acc, section) => {
-      acc[section.name] = {
-        label: section.name,
-        color: section.color || 'var(--color-chart-1)',
-      };
+    (acc, section, index) => {
+      acc[section.name] = { label: section.name, color: colorAt(index) };
       return acc;
     },
     {} as Record<string, { label: string; color: string }>
@@ -95,8 +94,9 @@ export function TotalWealthChart({ data, sections }: TotalWealthChartProps) {
         <ChartContainer config={chartConfig} className="h-[400px] w-full">
           <AreaChart data={data}>
             <defs>
-              {sections.map((section) => {
+              {sections.map((section, index) => {
                 const gradientId = `fill-${section.name.replace(/\s+/g, '-')}`;
+                const color = colorAt(index);
                 return (
                   <linearGradient
                     key={gradientId}
@@ -106,21 +106,13 @@ export function TotalWealthChart({ data, sections }: TotalWealthChartProps) {
                     x2="0"
                     y2="1"
                   >
-                    <stop
-                      offset="5%"
-                      stopColor={section.color}
-                      stopOpacity={0.8}
-                    />
-                    <stop
-                      offset="95%"
-                      stopColor={section.color}
-                      stopOpacity={0.1}
-                    />
+                    <stop offset="5%" stopColor={color} stopOpacity={0.85} />
+                    <stop offset="95%" stopColor={color} stopOpacity={0.5} />
                   </linearGradient>
                 );
               })}
             </defs>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <CartesianGrid vertical={false} stroke="var(--color-border)" />
             <XAxis
               dataKey="date"
               tickLine={false}
@@ -160,18 +152,24 @@ export function TotalWealthChart({ data, sections }: TotalWealthChartProps) {
                 />
               }
             />
-            {sections.map((section) => {
+            {sections.map((section, index) => {
               const gradientId = `fill-${section.name.replace(/\s+/g, '-')}`;
+              const color = colorAt(index);
               return (
                 <Area
                   key={section.name}
                   type="natural"
                   dataKey={section.name}
-                  stroke={section.color}
+                  stroke={color}
+                  strokeWidth={2}
                   fill={`url(#${gradientId})`}
                   stackId="1"
-                  dot={{ fill: section.color, r: 2 }}
-                  activeDot={{ r: 4 }}
+                  dot={false}
+                  activeDot={{
+                    r: 4,
+                    stroke: 'var(--color-card)',
+                    strokeWidth: 2,
+                  }}
                 />
               );
             })}

@@ -221,6 +221,27 @@ export async function createOrUpdateWealthEntries(
   return entries.map(convertWealthEntryFromConvex);
 }
 
+/** Parse YYYY-MM-DD to UTC midnight timestamp (constant, no timezone conversion). */
+function parseUTCDateKey(dateKey: string): number {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+
+export async function updateWealthEntriesDate(
+  userId: string,
+  oldDate: string,
+  newDate: string
+): Promise<number> {
+  const convex = await getConvexClient();
+  const oldTs = parseUTCDateKey(oldDate);
+  const newTs = parseUTCDateKey(newDate);
+  return await convex.mutation(api.wealth.updateWealthEntriesDate, {
+    userId: userId as Id<'users'>,
+    oldDateTimestamp: oldTs,
+    newDateTimestamp: newTs,
+  });
+}
+
 // Reorder Functions
 export async function updateWealthSectionsOrder(
   userId: string,

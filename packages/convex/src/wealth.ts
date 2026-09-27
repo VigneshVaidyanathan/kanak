@@ -237,38 +237,15 @@ export const getWealthEntriesByDate = query({
     const endOfDay = new Date(args.date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    const startTimestamp = startOfDay.getTime();
-    const endTimestamp = endOfDay.getTime();
-
-    const entries = await ctx.db
+    return await ctx.db
       .query('wealth_entries')
-      .withIndex('by_userId_date', (q) => q.eq('userId', args.userId))
+      .withIndex('by_userId_date', (q) =>
+        q
+          .eq('userId', args.userId)
+          .gte('date', startOfDay.getTime())
+          .lte('date', endOfDay.getTime())
+      )
       .collect();
-
-    const filteredEntries = entries.filter(
-      (e) => e.date >= startTimestamp && e.date <= endTimestamp
-    );
-
-    // Get line items and sections for each entry
-    const entriesWithRelations = await Promise.all(
-      filteredEntries.map(async (entry) => {
-        const lineItem = await ctx.db.get(entry.lineItemId);
-        if (!lineItem) return null;
-
-        const section = await ctx.db.get(lineItem.sectionId);
-        if (!section) return null;
-
-        return {
-          ...entry,
-          lineItem: {
-            ...lineItem,
-            section,
-          },
-        };
-      })
-    );
-
-    return entriesWithRelations.filter((e) => e !== null);
   },
 });
 
@@ -279,38 +256,19 @@ export const getWealthEntriesByDateRange = query({
     endDate: v.number(),
   },
   handler: async (ctx, args) => {
+    // Index range only: callers render the grid from sections + lineItemId,
+    // so entries are not hydrated with their line item / section.
     const entries = await ctx.db
       .query('wealth_entries')
-      .withIndex('by_userId_date', (q) => q.eq('userId', args.userId))
+      .withIndex('by_userId_date', (q) =>
+        q
+          .eq('userId', args.userId)
+          .gte('date', args.startDate)
+          .lte('date', args.endDate)
+      )
       .collect();
 
-    const filteredEntries = entries.filter(
-      (e) => e.date >= args.startDate && e.date <= args.endDate
-    );
-
-    // Get line items and sections for each entry
-    const entriesWithRelations = await Promise.all(
-      filteredEntries.map(async (entry) => {
-        const lineItem = await ctx.db.get(entry.lineItemId);
-        if (!lineItem) return null;
-
-        const section = await ctx.db.get(lineItem.sectionId);
-        if (!section) return null;
-
-        return {
-          ...entry,
-          lineItem: {
-            ...lineItem,
-            section,
-          },
-        };
-      })
-    );
-
-    // Sort by date ascending
-    return entriesWithRelations
-      .filter((e) => e !== null)
-      .sort((a, b) => a.date - b.date);
+    return entries.sort((a, b) => a.date - b.date);
   },
 });
 
@@ -326,10 +284,8 @@ export const createOrUpdateWealthEntries = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    // Set time to start of day for consistency
-    const entryDate = new Date(args.date);
-    entryDate.setHours(0, 0, 0, 0);
-    const entryTimestamp = entryDate.getTime();
+    // Use date timestamp as-is (API sends UTC midnight; no timezone conversion)
+    const entryTimestamp = args.date;
 
     // Verify all line items belong to the user
     const lineItemIds = args.entries.map((e) => e.lineItemId);
@@ -384,6 +340,32 @@ export const createOrUpdateWealthEntries = mutation({
     );
 
     return results;
+  },
+});
+
+/** Update all entries for a given date to a new date (re-date). Uses UTC timestamps. */
+export const updateWealthEntriesDate = mutation({
+  args: {
+    userId: v.id('users'),
+    oldDateTimestamp: v.number(),
+    newDateTimestamp: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const entries = await ctx.db
+      .query('wealth_entries')
+      .withIndex('by_userId_date', (q) =>
+        q.eq('userId', args.userId).eq('date', args.oldDateTimestamp)
+      )
+      .collect();
+
+    const now = Date.now();
+    for (const entry of entries) {
+      await ctx.db.patch(entry._id, {
+        date: args.newDateTimestamp,
+        updatedAt: now,
+      });
+    }
+    return entries.length;
   },
 });
 
