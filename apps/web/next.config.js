@@ -5,6 +5,7 @@ const nextConfig = {
   transpilePackages: [
     '@kanak/ui',
     '@kanak/components',
+    '@kanak/llm',
     '@kanak/shared',
     '@kanak/utils',
     '@kanak/convex',
@@ -17,6 +18,12 @@ const nextConfig = {
     removeConsole: process.env.NODE_ENV === 'production',
   },
   poweredByHeader: false,
+  // Dev only: keep compiled routes in memory instead of disposing them after
+  // 15s, so revisiting a route does not recompile it from scratch.
+  onDemandEntries: {
+    maxInactiveAge: 60 * 60 * 1000,
+    pagesBufferLength: 100,
+  },
   webpack: (config, { isServer }) => {
     // Ensure proper resolution of Convex generated files
     if (!isServer) {

@@ -8,6 +8,7 @@ function convertUploadFromConvex(upload: any): any {
   return {
     id: upload._id,
     userId: upload.userId,
+    storageId: upload.storageId,
     fileName: upload.fileName,
     fileSize: upload.fileSize,
     totalRows: upload.totalRows,
@@ -17,17 +18,49 @@ function convertUploadFromConvex(upload: any): any {
   };
 }
 
+// Uploads the raw CSV to Convex file storage and returns its storage id.
+async function storeCsvFile(
+  convex: any,
+  csvContent: string
+): Promise<Id<'_storage'> | undefined> {
+  try {
+    const uploadUrl = await convex.mutation(
+      api.transactionUploads.generateUploadUrl,
+      {}
+    );
+    const response = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/csv' },
+      body: csvContent,
+    });
+    if (!response.ok) {
+      throw new Error(`Upload failed with status ${response.status}`);
+    }
+    const { storageId } = (await response.json()) as { storageId: string };
+    return storageId as Id<'_storage'>;
+  } catch (error) {
+    // ponytail: storing the file is best-effort, never block the import
+    console.error('Failed to store CSV in Convex storage:', error);
+    return undefined;
+  }
+}
+
 export async function createTransactionUpload(
   userId: string,
   fileName: string,
   fileSize: number,
-  totalRows: number
+  totalRows: number,
+  csvContent?: string
 ): Promise<any> {
   const convex = await getConvexClient();
+  const storageId = csvContent
+    ? await storeCsvFile(convex, csvContent)
+    : undefined;
   const upload = await convex.mutation(
     api.transactionUploads.createTransactionUpload,
     {
       userId: userId as Id<'users'>,
+      storageId,
       fileName,
       fileSize,
       totalRows,

@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 4444",
+    "dev": "next dev --turbo -p 4444",
+    "dev:webpack": "next dev -p 4444",
     "build": "next build",
     "start": "next start -p 4444",
     "lint": "next lint"
@@ -11,6 +12,7 @@
   "dependencies": {
     "@kanak/api": "workspace:*",
     "@kanak/components": "workspace:*",
+    "@kanak/llm": "workspace:*",
     "@kanak/shared": "workspace:*",
     "@kanak/ui": "workspace:*",
     "@kanak/utils": "workspace:*",

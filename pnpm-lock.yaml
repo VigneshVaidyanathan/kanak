@@ -153,6 +153,9 @@ importers:
       '@kanak/components':
         specifier: workspace:*
         version: link:../../packages/components
+      '@kanak/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
       '@kanak/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -274,6 +277,12 @@ importers:
       '@kanak/convex':
         specifier: workspace:*
         version: link:../convex
+      '@kanak/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@kanak/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@kanak/utils':
         specifier: workspace:*
         version: link:../utils
@@ -290,6 +299,9 @@ importers:
       '@types/node':
         specifier: ^20
         version: 20.19.41
+      next:
+        specifier: ^14.2.35
+        version: 14.2.35(@babel/core@7.29.7)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       typescript:
         specifier: ^5
         version: 5.9.3
@@ -342,9 +354,25 @@ importers:
 
   packages/convex:
     dependencies:
+      '@kanak/llm':
+        specifier: workspace:*
+        version: link:../llm
       convex:
         specifier: ^1.11.0
         version: 1.39.1(react@18.3.1)
+    devDependencies:
+      '@types/node':
+        specifier: ^20
+        version: 20.19.41
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+
+  packages/llm:
+    dependencies:
+      '@typesafe-ai/sdk':
+        specifier: ^0.6.0
+        version: 0.6.0
     devDependencies:
       '@types/node':
         specifier: ^20
@@ -3241,6 +3269,10 @@ packages:
 
   '@types/yargs@17.0.35':
     resolution: {integrity: sha512-qUHkeCyQFxMXg79wQfTtfndEC+N9ZZg76HJftDJp+qH2tV7Gj4OJi7l+PiWwJ+pWtW8GwSmqsDj/oymhrTWXjg==}
+
+  '@typesafe-ai/sdk@0.6.0':
+    resolution: {integrity: sha512-IddX+Q0XM+VagOUZFeP7wZjaO4SHMdvnh2zEBdrZZnXedWI3BNK1lKhMx3ayrkFWvVLbVcUHJy6AVZlY+e6Jaw==}
+    engines: {node: '>=20'}
 
   '@typescript-eslint/eslint-plugin@8.60.0':
     resolution: {integrity: sha512-QYb/sa74/s7OKMbACMjrYnGspj9Hs5YI5aaffSL65UfeBUzVzBJfVo3oWSpbzPurvm7yaCCo2Lk7lVj610HqKw==}
@@ -11233,6 +11265,8 @@ snapshots:
   '@types/yargs@17.0.35':
     dependencies:
       '@types/yargs-parser': 21.0.3
+
+  '@typesafe-ai/sdk@0.6.0': {}
 
   '@typescript-eslint/eslint-plugin@8.60.0(@typescript-eslint/parser@8.60.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)(typescript@5.9.3)':
     dependencies:

@@ -9,8 +9,12 @@ import {
 } from '@/store/csv-upload-store';
 import { BankAccount, Transaction } from '@kanak/shared';
 import { Alert, AlertDescription, AlertTitle, Button } from '@kanak/ui';
-import { IconArrowLeft, IconArrowRight } from '@tabler/icons-react';
-import { useEffect, useMemo, useState } from 'react';
+import {
+  IconArrowLeft,
+  IconArrowRight,
+  IconSparkles,
+} from '@tabler/icons-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TemplateMappingForm } from './template-mapping-form';
 
 export type CsvTransactionMappingProperty = {
@@ -98,6 +102,8 @@ export const ColumnMapping = ({
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [loadingBankAccounts, setLoadingBankAccounts] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [autoMapping, setAutoMapping] = useState(false);
+  const autoMappedFor = useRef<FileContent | undefined>(undefined);
 
   const dateFormatOptions: { value: DateFormat; label: string }[] = [
     { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY (e.g., 25/12/2024)' },
@@ -146,6 +152,73 @@ export const ColumnMapping = ({
       })
     );
   }, [setColumnMapping]);
+
+  // Ask Jev to fill in the mapping. Suggestions only: the user still edits.
+  const autoMap = useCallback(async () => {
+    if (!token || !fileContent) return;
+
+    setAutoMapping(true);
+    setErrorMessage(null);
+    try {
+      const response = await fetch('/api/csv/map-columns', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          headers: fileContent.headers,
+          rows: fileContent.rows.slice(0, 5),
+          // Bank account is picked from a dropdown, not a CSV column.
+          properties: kanakTransactionProperties
+            .filter((p) => p.value !== 'bankAccount')
+            .map(({ value, label, description }) => ({
+              value,
+              label,
+              description,
+            })),
+        }),
+      });
+
+      if (!response.ok) {
+        const { error } = await response.json().catch(() => ({}));
+        console.error('Auto-mapping columns failed:', response.status, error);
+        setErrorMessage(
+          response.status === 503
+            ? 'Auto-mapping is not configured. Map the columns manually.'
+            : 'Could not auto-map the columns. Map them manually.'
+        );
+        return;
+      }
+
+      const { columns, dateFormat: suggestedFormat } = await response.json();
+      setColumnMapping(
+        kanakTransactionProperties.map((p) => {
+          const headerIndex = columns?.[p.value]?.headerIndex;
+          if (headerIndex === undefined) return { property: p };
+          return {
+            property: p,
+            header: fileContent.headers[headerIndex],
+            headerIndex,
+          };
+        })
+      );
+      if (suggestedFormat) setDateFormat(suggestedFormat as DateFormat);
+    } catch (error) {
+      console.error('Auto-mapping columns failed:', error);
+      setErrorMessage('Could not auto-map the columns. Map them manually.');
+    } finally {
+      setAutoMapping(false);
+    }
+  }, [token, fileContent, setColumnMapping, setDateFormat]);
+
+  // Run once per file; the AI Suggest button re-runs it on demand.
+  useEffect(() => {
+    if (!token || !fileContent) return;
+    if (autoMappedFor.current === fileContent) return;
+    autoMappedFor.current = fileContent;
+    autoMap();
+  }, [token, fileContent, autoMap]);
 
   const canComplete = useMemo(() => {
     // Template mode: check date, bankAccount, description, and both withdrawal/deposit
@@ -335,6 +408,22 @@ export const ColumnMapping = ({
             <AlertDescription>{errorMessage}</AlertDescription>
           </Alert>
         )}
+        <div className="mb-2 flex items-center justify-end gap-2">
+          {autoMapping && (
+            <span className="text-sm text-gray-500">
+              Matching your CSV columns…
+            </span>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={autoMap}
+            disabled={autoMapping || !fileContent}
+          >
+            <IconSparkles size={16} />
+            AI Suggest
+          </Button>
+        </div>
         {fileContent && (
           <TemplateMappingForm
             fileContent={fileContent}

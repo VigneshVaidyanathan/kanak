@@ -22,6 +22,8 @@ export default defineSchema({
     category: v.optional(v.string()),
     notes: v.optional(v.string()),
     isInternal: v.optional(v.boolean()),
+    // Soft delete: absent or false means live. Never hard-delete transactions.
+    isDeleted: v.optional(v.boolean()),
     userId: v.id('users'),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -147,6 +149,7 @@ export default defineSchema({
 
   transaction_uploads: defineTable({
     userId: v.id('users'),
+    storageId: v.optional(v.id('_storage')),
     fileName: v.string(),
     fileSize: v.number(),
     totalRows: v.number(),

@@ -45,6 +45,7 @@
     "convex:codegen": "convex codegen"
   },
   "dependencies": {
+    "@kanak/llm": "workspace:*",
     "convex": "^1.11.0"
   },
   "devDependencies": {

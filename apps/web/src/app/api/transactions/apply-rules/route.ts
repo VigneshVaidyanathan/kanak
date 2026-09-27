@@ -3,8 +3,9 @@ import { verifyAuth } from '@/lib/auth';
 import {
   getTransactionRulesByUserId,
   getTransactionsByIds,
-  updateTransaction,
+  updateTransactions,
   matchesGroupFilter,
+  type BatchTransactionUpdate,
 } from '@kanak/api';
 import { GroupFilter, TransactionRuleAction, Transaction } from '@kanak/shared';
 import { z } from 'zod';
@@ -50,81 +51,59 @@ export async function POST(request: NextRequest) {
     }
 
     // Process each transaction
-    let updatedCount = 0;
     let skippedCount = 0;
-    const errors: Array<{ transactionId: string; error: string }> = [];
     const ruleBreakdown: Record<string, { ruleTitle: string; count: number }> =
       {};
+    const pending: BatchTransactionUpdate[] = [];
 
     for (const transaction of transactions) {
-      let matched = false;
+      // Check rules in order and stop at the first match
+      const rule = rules.find((r) =>
+        matchesGroupFilter(
+          transaction as Transaction,
+          r.filter as unknown as GroupFilter
+        )
+      );
 
-      // Check rules in order until we find a match
-      for (const rule of rules) {
-        const filter = rule.filter as unknown as GroupFilter;
-
-        if (matchesGroupFilter(transaction as Transaction, filter)) {
-          // Track rule breakdown
-          if (!ruleBreakdown[rule.id]) {
-            ruleBreakdown[rule.id] = {
-              ruleTitle: rule.title,
-              count: 0,
-            };
-          }
-          ruleBreakdown[rule.id].count++;
-
-          if (preview) {
-            // In preview mode, just count matches without applying
-            updatedCount++;
-            matched = true;
-            break;
-          }
-
-          // Apply rule actions
-          const action = rule.action as unknown as TransactionRuleAction;
-          const updates: Record<string, any> = {};
-
-          // Apply notes if provided
-          if (action.notes) {
-            updates.notes = action.notes;
-          }
-
-          // Apply isInternal flag if provided
-          if (action.isInternal !== undefined) {
-            updates.isInternal = action.isInternal === 'yes';
-          }
-
-          // Apply category if provided
-          if (action.category) {
-            updates.category = action.category;
-          }
-
-          // Note: tags are not stored in Transaction model yet
-          // We can add this later if needed
-
-          // Update the transaction
-          try {
-            await updateTransaction(
-              transaction.id,
-              authPayload.userId,
-              updates
-            );
-            updatedCount++;
-            matched = true;
-            break; // Stop after first matching rule
-          } catch (error: any) {
-            errors.push({
-              transactionId: transaction.id,
-              error: error.message || 'Failed to update transaction',
-            });
-            break;
-          }
-        }
-      }
-
-      if (!matched) {
+      if (!rule) {
         skippedCount++;
+        continue;
       }
+
+      if (!ruleBreakdown[rule.id]) {
+        ruleBreakdown[rule.id] = { ruleTitle: rule.title, count: 0 };
+      }
+      ruleBreakdown[rule.id].count++;
+
+      if (preview) continue;
+
+      // Note: tags are not stored in Transaction model yet
+      const action = rule.action as unknown as TransactionRuleAction;
+      pending.push({
+        id: transaction.id,
+        notes: action.notes || undefined,
+        category: action.category || undefined,
+        isInternal:
+          action.isInternal !== undefined
+            ? action.isInternal === 'yes'
+            : undefined,
+      });
+    }
+
+    let updatedCount = Object.values(ruleBreakdown).reduce(
+      (sum, r) => sum + r.count,
+      0
+    );
+    let errors: Array<{ transactionId: string; error: string }> = [];
+
+    if (!preview) {
+      const { updated, failed } = await updateTransactions(
+        authPayload.userId,
+        pending
+      );
+      updatedCount = updated.length;
+      skippedCount += failed.length;
+      errors = failed.map((f) => ({ transactionId: f.id, error: f.error }));
     }
 
     return NextResponse.json({

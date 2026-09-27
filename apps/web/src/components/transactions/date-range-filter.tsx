@@ -118,14 +118,14 @@ function labelFor(value: TransactionDateRange): string {
       r.to.getTime() === value.to.getTime()
     );
   });
-  if (preset) return preset.label;
   const fmt = (d: Date) =>
     d.toLocaleDateString('en-US', {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
     });
-  return `${fmt(value.from)} – ${fmt(value.to)}`;
+  const range = `${fmt(value.from)} – ${fmt(value.to)}`;
+  return preset ? `${preset.label}: ${range}` : range;
 }
 
 interface DateRangeFilterProps {
@@ -158,7 +158,7 @@ export function DateRangeFilter({ value, onChange }: DateRangeFilterProps) {
           <IconChevronDown size={16} />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0 flex" align="end">
+      <PopoverContent className="w-auto p-0 flex" align="start">
         <div className="flex flex-col gap-1 p-2 border-r min-w-[150px]">
           {DATE_PRESETS.map((preset) => (
             <Button

@@ -1333,7 +1333,6 @@ export default function TransactionsPage() {
               {selectedTransactions.length !== 1 ? 's' : ''} selected
             </div>
           )}
-          <DateRangeFilter value={dateRange} onChange={handleDateRangeChange} />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
@@ -1399,6 +1398,9 @@ export default function TransactionsPage() {
         initialPagination={viewType === 'month' ? undefined : initialPagination}
         onPaginationChange={
           viewType === 'month' ? undefined : handlePaginationChange
+        }
+        filtersSlot={
+          <DateRangeFilter value={dateRange} onChange={handleDateRangeChange} />
         }
         initialColumnFilters={initialColumnFilters}
         onColumnFiltersChange={handleColumnFiltersChange}

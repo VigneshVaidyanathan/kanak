@@ -1,9 +1,15 @@
 import { v } from 'convex/values';
 import { mutation, query } from './_generated/server.js';
 
+export const generateUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => await ctx.storage.generateUploadUrl(),
+});
+
 export const createTransactionUpload = mutation({
   args: {
     userId: v.id('users'),
+    storageId: v.optional(v.id('_storage')),
     fileName: v.string(),
     fileSize: v.number(),
     totalRows: v.number(),
@@ -13,6 +19,7 @@ export const createTransactionUpload = mutation({
     const now = Date.now();
     const uploadId = await ctx.db.insert('transaction_uploads', {
       userId: args.userId,
+      storageId: args.storageId,
       fileName: args.fileName,
       fileSize: args.fileSize,
       totalRows: args.totalRows,

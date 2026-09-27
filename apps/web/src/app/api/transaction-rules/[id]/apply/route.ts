@@ -3,8 +3,9 @@ import { verifyAuth } from '@/lib/auth';
 import {
   getTransactionRuleById,
   getTransactionsByUserId,
-  updateTransaction,
+  updateTransactions,
   matchesGroupFilter,
+  type BatchTransactionUpdate,
 } from '@kanak/api';
 import { GroupFilter, TransactionRuleAction, Transaction } from '@kanak/shared';
 
@@ -43,45 +44,36 @@ export async function POST(
     const filter = rule.filter as unknown as GroupFilter;
     const action = rule.action as unknown as TransactionRuleAction;
 
-    let updatedCount = 0;
+    const pending: BatchTransactionUpdate[] = [];
     let skippedCount = 0;
-    const errors: Array<{ transactionId: string; error: string }> = [];
 
     for (const transaction of transactions) {
-      if (matchesGroupFilter(transaction as Transaction, filter)) {
-        // Apply rule actions
-        const updates: Record<string, any> = {};
-
-        // Apply notes if provided
-        if (action.notes) {
-          updates.notes = action.notes;
-        }
-
-        // Apply isInternal flag if provided
-        if (action.isInternal !== undefined) {
-          updates.isInternal = action.isInternal === 'yes';
-        }
-
-        // Apply category if provided
-        if (action.category) {
-          updates.category = action.category;
-        }
-
-        // Update the transaction
-        try {
-          await updateTransaction(transaction.id, authPayload.userId, updates);
-          updatedCount++;
-        } catch (error: any) {
-          errors.push({
-            transactionId: transaction.id,
-            error: error.message || 'Failed to update transaction',
-          });
-          skippedCount++;
-        }
-      } else {
+      if (!matchesGroupFilter(transaction as Transaction, filter)) {
         skippedCount++;
+        continue;
       }
+
+      pending.push({
+        id: transaction.id,
+        notes: action.notes || undefined,
+        category: action.category || undefined,
+        isInternal:
+          action.isInternal !== undefined
+            ? action.isInternal === 'yes'
+            : undefined,
+      });
     }
+
+    const { updated, failed } = await updateTransactions(
+      authPayload.userId,
+      pending
+    );
+    const updatedCount = updated.length;
+    skippedCount += failed.length;
+    const errors = failed.map((f) => ({
+      transactionId: f.id,
+      error: f.error,
+    }));
 
     return NextResponse.json({
       success: true,

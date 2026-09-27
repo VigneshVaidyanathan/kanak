@@ -33,7 +33,7 @@ export const VerifyTransactions = ({
   const [transactionsAdded, setTransactionsAdded] = useState(0);
   const { token } = useAuthStore();
   const { setTransactions } = useTransactionsStore();
-  const { dateFormat, fileName, fileSize } = useCsvUploadStore();
+  const { dateFormat, fileName, fileSize, rawContent } = useCsvUploadStore();
 
   const columns = useMemo<ColumnDef<SampleTransaction>[]>(
     () => [
@@ -225,6 +225,7 @@ export const VerifyTransactions = ({
               fileName,
               fileSize,
               totalRows: addedCount,
+              csvContent: rawContent,
             }),
           });
         } catch (error) {

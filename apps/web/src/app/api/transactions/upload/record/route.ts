@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     const authPayload = await verifyAuth(request);
 
     const body = await request.json();
-    const { fileName, fileSize, totalRows } = body;
+    const { fileName, fileSize, totalRows, csvContent } = body;
 
     if (!fileName || fileSize === undefined || totalRows === undefined) {
       return NextResponse.json(
@@ -36,7 +36,8 @@ export async function POST(request: NextRequest) {
       authPayload.userId,
       fileName,
       fileSize,
-      totalRows
+      totalRows,
+      typeof csvContent === 'string' ? csvContent : undefined
     );
 
     return NextResponse.json({

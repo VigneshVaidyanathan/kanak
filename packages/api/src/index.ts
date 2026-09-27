@@ -9,3 +9,4 @@ export * from './transaction-rules';
 export * from './transaction-rule-matcher';
 export * from './budgets';
 export * from './wealth';
+export * from './csv-mapping';

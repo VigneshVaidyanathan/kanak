@@ -47,6 +47,7 @@ interface CsvUploadState {
   dateFormat: DateFormat;
   fileName?: string;
   fileSize?: number;
+  rawContent?: string;
   setActiveStep: (step: number) => void;
   setFileContent: (fileContent?: FileContent) => void;
   setColumnMapping: (columnMapping: CsvColumnMapping[]) => void;
@@ -55,6 +56,7 @@ interface CsvUploadState {
   setDateFormat: (format: DateFormat) => void;
   setFileName: (fileName?: string) => void;
   setFileSize: (fileSize?: number) => void;
+  setRawContent: (rawContent?: string) => void;
   reset: () => void;
 }
 
@@ -67,6 +69,7 @@ const initialState: Pick<
   | 'dateFormat'
   | 'fileName'
   | 'fileSize'
+  | 'rawContent'
 > = {
   activeStep: 0,
   columnMapping: [],
@@ -75,6 +78,7 @@ const initialState: Pick<
   dateFormat: 'DD/MM/YYYY',
   fileName: undefined,
   fileSize: undefined,
+  rawContent: undefined,
 };
 
 export const useCsvUploadStore = create<CsvUploadState>((set) => ({
@@ -87,5 +91,6 @@ export const useCsvUploadStore = create<CsvUploadState>((set) => ({
   setDateFormat: (dateFormat) => set({ dateFormat }),
   setFileName: (fileName) => set({ fileName }),
   setFileSize: (fileSize) => set({ fileSize }),
+  setRawContent: (rawContent) => set({ rawContent }),
   reset: () => set(initialState),
 }));

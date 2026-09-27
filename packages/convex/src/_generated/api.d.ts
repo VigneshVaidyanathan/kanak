@@ -12,6 +12,7 @@ import type * as auth from "../auth.js";
 import type * as bankAccounts from "../bankAccounts.js";
 import type * as budgets from "../budgets.js";
 import type * as categories from "../categories.js";
+import type * as csvMapping from "../csvMapping.js";
 import type * as index from "../index.js";
 import type * as transactionRules from "../transactionRules.js";
 import type * as transactionUploads from "../transactionUploads.js";
@@ -30,6 +31,7 @@ declare const fullApi: ApiFromModules<{
   bankAccounts: typeof bankAccounts;
   budgets: typeof budgets;
   categories: typeof categories;
+  csvMapping: typeof csvMapping;
   index: typeof index;
   transactionRules: typeof transactionRules;
   transactionUploads: typeof transactionUploads;

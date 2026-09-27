@@ -155,30 +155,45 @@ export async function findDuplicateTransaction(
   return convertTransactionFromConvex(transaction);
 }
 
+const UPSERT_CHUNK_SIZE = 500;
+
 export async function upsertTransactions(
   userId: string,
   inputs: CreateTransactionInput[]
 ): Promise<Array<{ action: 'updated' | 'created'; transaction: Transaction }>> {
+  const convex = await getConvexClient();
   const results: Array<{
     action: 'updated' | 'created';
     transaction: Transaction;
   }> = [];
 
-  for (const input of inputs) {
-    const existing = await findDuplicateTransaction(
-      userId,
-      input.date,
-      input.amount,
-      input.description,
-      input.type
+  // ponytail: chunked so one CSV import stays inside Convex's per-mutation
+  // argument/read limits. Raise the chunk size only if imports get slow again.
+  for (let i = 0; i < inputs.length; i += UPSERT_CHUNK_SIZE) {
+    const chunk = inputs.slice(i, i + UPSERT_CHUNK_SIZE).map((input) => ({
+      date: dateToTimestamp(input.date),
+      accountingDate: input.accountingDate
+        ? dateToTimestamp(input.accountingDate)
+        : undefined,
+      description: input.description,
+      amount: input.amount,
+      type: input.type,
+      bankAccount: input.bankAccount,
+      reason: input.reason,
+      category: input.category,
+      notes: input.notes,
+      isInternal: input.isInternal,
+    }));
+
+    const batch = await convex.mutation(
+      api.transactions.upsertTransactionsBatch,
+      { userId: userId as Id<'users'>, transactions: chunk }
     );
 
-    if (existing) {
-      const updated = await updateTransaction(existing.id, userId, input);
-      results.push({ action: 'updated', transaction: updated });
-    } else {
-      const created = await createTransaction(userId, input);
-      results.push({ action: 'created', transaction: created });
+    for (const result of batch) {
+      const converted = convertTransactionFromConvex(result.transaction);
+      if (!converted) throw new Error('Failed to upsert transaction');
+      results.push({ action: result.action, transaction: converted });
     }
   }
 
@@ -213,6 +228,53 @@ export async function updateTransaction(
   const converted = convertTransactionFromConvex(transaction);
   if (!converted) throw new Error('Failed to update transaction');
   return converted;
+}
+
+const UPDATE_CHUNK_SIZE = 500;
+
+export type BatchTransactionUpdate = {
+  id: string;
+  notes?: string;
+  category?: string;
+  isInternal?: boolean;
+};
+
+/**
+ * Apply the same set of rule-driven field updates to many transactions
+ * using one Convex mutation per chunk instead of one per transaction.
+ */
+export async function updateTransactions(
+  userId: string,
+  updates: BatchTransactionUpdate[]
+): Promise<{
+  updated: Transaction[];
+  failed: Array<{ id: string; error: string }>;
+}> {
+  const convex = await getConvexClient();
+  const updated: Transaction[] = [];
+  const failed: Array<{ id: string; error: string }> = [];
+
+  for (let i = 0; i < updates.length; i += UPDATE_CHUNK_SIZE) {
+    const chunk = updates.slice(i, i + UPDATE_CHUNK_SIZE).map((u) => ({
+      id: u.id as Id<'transactions'>,
+      notes: u.notes,
+      category: u.category,
+      isInternal: u.isInternal,
+    }));
+
+    const result = await convex.mutation(
+      api.transactions.updateTransactionsBatch,
+      { userId: userId as Id<'users'>, updates: chunk }
+    );
+
+    for (const transaction of result.updated) {
+      const converted = convertTransactionFromConvex(transaction);
+      if (converted) updated.push(converted);
+    }
+    failed.push(...result.failed);
+  }
+
+  return { updated, failed };
 }
 
 export async function deleteTransaction(
