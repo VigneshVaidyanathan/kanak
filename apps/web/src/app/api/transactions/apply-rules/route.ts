@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/auth';
+import { convexAuthNextjsToken } from '@convex-dev/auth/nextjs/server';
+import { api } from '@kanak/convex/src/_generated/api';
 import {
-  getTransactionRulesByUserId,
+  getAuthedConvexClient,
   getTransactionsByIds,
   updateTransactions,
   matchesGroupFilter,
@@ -26,7 +28,15 @@ export async function POST(request: NextRequest) {
     const { transactionIds, preview } = applyRulesSchema.parse(body);
 
     // Fetch all transaction rules for the user (ordered by priority)
-    const rules = await getTransactionRulesByUserId(authPayload.userId);
+    const token = await convexAuthNextjsToken();
+    if (!token) {
+      throw new Error('No authentication token provided');
+    }
+    const convex = await getAuthedConvexClient(token);
+    const rules = await convex.query(
+      api.transactionRules.getTransactionRulesByUserId,
+      {}
+    );
 
     if (rules.length === 0) {
       return NextResponse.json({

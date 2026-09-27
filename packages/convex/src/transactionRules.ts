@@ -1,164 +1,176 @@
 import { v } from 'convex/values';
+import { Doc } from './_generated/dataModel.js';
 import { mutation, query } from './_generated/server.js';
+import { requireUser } from './lib/auth.js';
+
+// Matches the shape the deleted API layer used to map: `id`, not `_id`, and
+// epoch-millisecond timestamps, since Convex cannot serialize a Date.
+function toRule(rule: Doc<'transaction_rules'>) {
+  return {
+    id: rule._id,
+    title: rule.title,
+    filter: rule.filter,
+    action: rule.action,
+    order: rule.order,
+    userId: rule.userId,
+    createdAt: rule.createdAt,
+    updatedAt: rule.updatedAt,
+  };
+}
+
+// Priority order: lowest `order` wins, ties broken by newest first.
+function byPriority(a: Doc<'transaction_rules'>, b: Doc<'transaction_rules'>) {
+  return a.order !== b.order ? a.order - b.order : b.createdAt - a.createdAt;
+}
 
 export const getTransactionRulesByUserId = query({
-  args: { userId: v.id('users') },
-  handler: async (ctx, args) => {
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUser(ctx);
+
     const rules = await ctx.db
       .query('transaction_rules')
-      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
       .collect();
 
-    // Sort by order asc, createdAt desc
-    return rules.sort((a, b) => {
-      if (a.order !== b.order) return a.order - b.order;
-      return b.createdAt - a.createdAt;
-    });
+    return rules.sort(byPriority).map(toRule);
   },
 });
 
 export const getTransactionRuleById = query({
-  args: {
-    id: v.id('transaction_rules'),
-    userId: v.id('users'),
-  },
+  args: { id: v.id('transaction_rules') },
   handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+
     const rule = await ctx.db.get(args.id);
-    if (!rule || rule.userId !== args.userId) {
+    if (!rule || rule.userId !== userId) {
       return null;
     }
-    return rule;
+
+    return toRule(rule);
   },
 });
 
 export const createTransactionRule = mutation({
   args: {
-    userId: v.id('users'),
     title: v.string(),
     filter: v.any(),
     action: v.any(),
     order: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    // Get the maximum order value for this user
+    const userId = await requireUser(ctx);
+
     const rules = await ctx.db
       .query('transaction_rules')
-      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
       .collect();
 
     const maxOrder = rules.reduce((max, r) => Math.max(max, r.order), -1);
-
-    const newOrder = args.order !== undefined ? args.order : maxOrder + 1;
-
     const now = Date.now();
+
     const ruleId = await ctx.db.insert('transaction_rules', {
       title: args.title,
       filter: args.filter,
       action: args.action,
-      order: newOrder,
-      userId: args.userId,
+      order: args.order ?? maxOrder + 1,
+      userId,
       createdAt: now,
       updatedAt: now,
     });
 
-    return await ctx.db.get(ruleId);
+    return toRule((await ctx.db.get(ruleId))!);
   },
 });
 
 export const updateTransactionRule = mutation({
   args: {
     id: v.id('transaction_rules'),
-    userId: v.id('users'),
     title: v.optional(v.string()),
     filter: v.optional(v.any()),
     action: v.optional(v.any()),
     order: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const { id, userId, ...updates } = args;
+    const userId = await requireUser(ctx);
+    const { id, ...updates } = args;
 
-    // Verify ownership
+    // "Not found" rather than "forbidden" on someone else's row: the response
+    // should not confirm that an id exists.
     const existing = await ctx.db.get(id);
     if (!existing || existing.userId !== userId) {
       throw new Error('Transaction rule not found');
     }
 
-    const updateData: any = {
-      updatedAt: Date.now(),
-    };
+    // Only the fields actually supplied — `patch` would otherwise write
+    // `undefined` over a field the caller never mentioned.
+    const patch: Partial<Doc<'transaction_rules'>> = { updatedAt: Date.now() };
+    if (updates.title !== undefined) patch.title = updates.title;
+    if (updates.filter !== undefined) patch.filter = updates.filter;
+    if (updates.action !== undefined) patch.action = updates.action;
+    if (updates.order !== undefined) patch.order = updates.order;
 
-    if (updates.title !== undefined) updateData.title = updates.title;
-    if (updates.filter !== undefined) updateData.filter = updates.filter;
-    if (updates.action !== undefined) updateData.action = updates.action;
-    if (updates.order !== undefined) updateData.order = updates.order;
+    await ctx.db.patch(id, patch);
 
-    await ctx.db.patch(id, updateData);
-    return await ctx.db.get(id);
+    return toRule((await ctx.db.get(id))!);
   },
 });
 
 export const deleteTransactionRule = mutation({
-  args: {
-    id: v.id('transaction_rules'),
-    userId: v.id('users'),
-  },
+  args: { id: v.id('transaction_rules') },
   handler: async (ctx, args) => {
-    // Verify ownership
+    const userId = await requireUser(ctx);
+
     const existing = await ctx.db.get(args.id);
-    if (!existing || existing.userId !== args.userId) {
+    if (!existing || existing.userId !== userId) {
       throw new Error('Transaction rule not found');
     }
 
     const deletedOrder = existing.order;
-
     await ctx.db.delete(args.id);
 
-    // Reorder remaining rules to fill the gap
-    const remainingRules = await ctx.db
+    // Close the gap so `order` stays contiguous.
+    const remaining = await ctx.db
       .query('transaction_rules')
-      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
       .collect();
 
-    const rulesToUpdate = remainingRules.filter((r) => r.order > deletedOrder);
     await Promise.all(
-      rulesToUpdate.map((rule) =>
-        ctx.db.patch(rule._id, {
-          order: rule.order - 1,
-          updatedAt: Date.now(),
-        })
-      )
+      remaining
+        .filter((r) => r.order > deletedOrder)
+        .map((rule) =>
+          ctx.db.patch(rule._id, {
+            order: rule.order - 1,
+            updatedAt: Date.now(),
+          })
+        )
     );
 
-    return existing;
+    return toRule(existing);
   },
 });
 
 export const updateTransactionRulesOrder = mutation({
   args: {
-    userId: v.id('users'),
     updates: v.array(
-      v.object({
-        id: v.id('transaction_rules'),
-        order: v.number(),
-      })
+      v.object({ id: v.id('transaction_rules'), order: v.number() })
     ),
   },
   handler: async (ctx, args) => {
-    // Verify all rules belong to the user
-    const ruleIds = args.updates.map((u) => u.id);
-    const userRules = await Promise.all(ruleIds.map((id) => ctx.db.get(id)));
+    const userId = await requireUser(ctx);
 
-    const invalidRules = userRules.filter(
-      (r) => !r || r.userId !== args.userId
+    // Check every rule before writing any of them, so a request that includes
+    // one foreign id cannot reorder the rest.
+    const rules = await Promise.all(
+      args.updates.map((update) => ctx.db.get(update.id))
     );
 
-    if (invalidRules.length > 0) {
+    if (rules.some((rule) => !rule || rule.userId !== userId)) {
       throw new Error(
         'Some transaction rules not found or do not belong to user'
       );
     }
 
-    // Update each rule's order
     await Promise.all(
       args.updates.map((update) =>
         ctx.db.patch(update.id, {
@@ -168,15 +180,11 @@ export const updateTransactionRulesOrder = mutation({
       )
     );
 
-    // Return updated rules
-    const rules = await ctx.db
+    const updated = await ctx.db
       .query('transaction_rules')
-      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
       .collect();
 
-    return rules.sort((a, b) => {
-      if (a.order !== b.order) return a.order - b.order;
-      return b.createdAt - a.createdAt;
-    });
+    return updated.sort(byPriority).map(toRule);
   },
 });

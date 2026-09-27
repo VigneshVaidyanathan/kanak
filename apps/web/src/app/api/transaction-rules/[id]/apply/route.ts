@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/auth';
+import { convexAuthNextjsToken } from '@convex-dev/auth/nextjs/server';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import {
-  getTransactionRuleById,
+  getAuthedConvexClient,
   getTransactionsByUserId,
   updateTransactions,
   matchesGroupFilter,
@@ -18,8 +21,20 @@ export async function POST(
   try {
     const authPayload = await verifyAuth(request);
 
-    // Get the rule
-    const rule = await getTransactionRuleById(params.id, authPayload.userId);
+    // Rules come straight from Convex now; the query takes its owner from the
+    // token. Applying them still runs here because it writes transactions,
+    // which have not moved yet.
+    const token = await convexAuthNextjsToken();
+    if (!token) {
+      throw new Error('No authentication token provided');
+    }
+    const convex = await getAuthedConvexClient(token);
+    const rule = await convex.query(
+      api.transactionRules.getTransactionRuleById,
+      {
+        id: params.id as Id<'transaction_rules'>,
+      }
+    );
 
     if (!rule) {
       return NextResponse.json(

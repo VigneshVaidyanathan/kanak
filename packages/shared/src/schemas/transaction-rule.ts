@@ -151,8 +151,9 @@ export const transactionRuleSchema = createTransactionRuleSchema.extend({
   id: z.string(),
   userId: z.string(),
   order: z.number().int().default(0),
-  createdAt: z.date(),
-  updatedAt: z.date(),
+  // Epoch milliseconds, as Convex stores and returns them.
+  createdAt: z.number(),
+  updatedAt: z.number(),
 });
 
 export type TransactionRule = z.infer<typeof transactionRuleSchema>;

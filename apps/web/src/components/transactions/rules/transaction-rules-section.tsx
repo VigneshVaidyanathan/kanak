@@ -1,7 +1,7 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
 import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import {
   Category,
   GroupFilter,
@@ -15,7 +15,7 @@ import {
   IconPlus,
   IconTrash,
 } from '@tabler/icons-react';
-import { useQuery } from 'convex/react';
+import { useMutation, useQuery } from 'convex/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { DeleteTransactionRuleModal } from './delete-transaction-rule-modal';
@@ -26,14 +26,28 @@ function countFilters(groupFilter: GroupFilter): number {
 }
 
 export function TransactionRulesSection() {
-  const { token } = useAuthStore();
-  const [rules, setRules] = useState<TransactionRule[]>([]);
+  const rulesResult = useQuery(
+    api.transactionRules.getTransactionRulesByUserId,
+    {}
+  );
+  const updateRulesOrder = useMutation(
+    api.transactionRules.updateTransactionRulesOrder
+  );
+  // Drag-and-drop reorders locally for the duration of the drag; `pendingOrder`
+  // holds that until the debounced save lands and the live query catches up.
+  const [pendingOrder, setPendingOrder] = useState<TransactionRule[] | null>(
+    null
+  );
+  const rules = useMemo(
+    () => pendingOrder ?? ((rulesResult ?? []) as TransactionRule[]),
+    [pendingOrder, rulesResult]
+  );
+  const loading = rulesResult === undefined;
   const categoriesResult = useQuery(api.categories.getCategoriesByUserId, {});
   const categories = useMemo(
     () => (categoriesResult ?? []) as Category[],
     [categoriesResult]
   );
-  const [loading, setLoading] = useState(true);
   const [formModalOpen, setFormModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedRule, setSelectedRule] = useState<TransactionRule | null>(
@@ -41,45 +55,7 @@ export function TransactionRulesSection() {
   );
   const [draggedRuleId, setDraggedRuleId] = useState<string | null>(null);
   const [isReordering, setIsReordering] = useState(false);
-  const fetchingRef = useRef(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const fetchRules = useCallback(async () => {
-    if (fetchingRef.current) {
-      return;
-    }
-
-    if (!token) {
-      return;
-    }
-
-    try {
-      fetchingRef.current = true;
-      setLoading(true);
-      const response = await fetch('/api/transaction-rules', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to fetch transaction rules');
-      }
-
-      const data = await response.json();
-      setRules(data);
-    } catch (error) {
-      console.error('Error fetching transaction rules:', error);
-    } finally {
-      setLoading(false);
-      fetchingRef.current = false;
-    }
-  }, [token]);
-
-  useEffect(() => {
-    fetchRules();
-  }, [fetchRules]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -103,14 +79,6 @@ export function TransactionRulesSection() {
   const handleDelete = (rule: TransactionRule) => {
     setSelectedRule(rule);
     setDeleteModalOpen(true);
-  };
-
-  const handleFormSuccess = () => {
-    fetchRules();
-  };
-
-  const handleDeleteSuccess = () => {
-    fetchRules();
   };
 
   const handleDragStart = (e: React.DragEvent, ruleId: string) => {
@@ -157,7 +125,7 @@ export function TransactionRulesSection() {
       order: index,
     }));
 
-    setRules(updatedRules);
+    setPendingOrder(updatedRules);
     setIsReordering(true);
 
     // Debounce the save operation
@@ -172,36 +140,20 @@ export function TransactionRulesSection() {
   };
 
   const saveOrder = async (orderedRules: TransactionRule[]) => {
-    if (!token) return;
-
     try {
-      const updates = orderedRules.map((rule, index) => ({
-        id: rule.id,
-        order: index,
-      }));
-
-      const response = await fetch('/api/transaction-rules/reorder', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ updates }),
+      await updateRulesOrder({
+        updates: orderedRules.map((rule, index) => ({
+          id: rule.id as Id<'transaction_rules'>,
+          order: index,
+        })),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to save order');
-      }
-
-      const updatedRules = await response.json();
-      setRules(updatedRules);
+      setPendingOrder(null);
       toast.success('Transaction rules order updated');
     } catch (error: any) {
       console.error('Error saving order:', error);
       toast.error(error.message || 'Failed to save order');
-      // Revert to original order on error
-      fetchRules();
+      // Drop the local order so the live query's version shows again.
+      setPendingOrder(null);
     }
   };
 
@@ -356,14 +308,12 @@ export function TransactionRulesSection() {
         onOpenChange={setFormModalOpen}
         rule={selectedRule || undefined}
         categories={categories}
-        onSuccess={handleFormSuccess}
       />
 
       <DeleteTransactionRuleModal
         open={deleteModalOpen}
         onOpenChange={setDeleteModalOpen}
         rule={selectedRule}
-        onSuccess={handleDeleteSuccess}
       />
     </>
   );

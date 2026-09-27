@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuthStore } from '@/store/auth-store';
+import { api } from '@kanak/convex/src/_generated/api';
 import { Transaction, TransactionRule } from '@kanak/shared';
 import {
   ContextMenu,
@@ -13,6 +14,7 @@ import {
   Input,
   Spinner,
 } from '@kanak/ui';
+import { useQuery } from 'convex/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface DescriptionCellProps {
@@ -37,9 +39,15 @@ export function DescriptionCell({
   const [selectedText, setSelectedText] = useState<string>('');
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [submenuOpen, setSubmenuOpen] = useState(false);
-  const [rules, setRules] = useState<TransactionRule[]>([]);
+  // Only subscribe while the submenu is open — 'skip' keeps the query off
+  // every row of the table.
+  const rulesResult = useQuery(
+    api.transactionRules.getTransactionRulesByUserId,
+    submenuOpen ? {} : 'skip'
+  );
+  const rules = (rulesResult ?? []) as TransactionRule[];
+  const loadingRules = submenuOpen && rulesResult === undefined;
   const [searchQuery, setSearchQuery] = useState('');
-  const [loadingRules, setLoadingRules] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -56,36 +64,6 @@ export function DescriptionCell({
       setShowContextMenu(false);
     }
   };
-
-  const fetchRules = useCallback(async () => {
-    if (!token) return;
-
-    try {
-      setLoadingRules(true);
-      const response = await fetch('/api/transaction-rules', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch transaction rules');
-      }
-
-      const data = await response.json();
-      setRules(data);
-    } catch (error) {
-      console.error('Error fetching transaction rules:', error);
-    } finally {
-      setLoadingRules(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    if (submenuOpen) {
-      fetchRules();
-    }
-  }, [submenuOpen, fetchRules]);
 
   const handleSetUpRule = () => {
     if (selectedText) {

@@ -1,6 +1,7 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import { TransactionRule } from '@kanak/shared';
 import {
   Button,
@@ -12,6 +13,7 @@ import {
   Spinner,
 } from '@kanak/ui';
 import { IconX } from '@tabler/icons-react';
+import { useMutation } from 'convex/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -19,16 +21,16 @@ interface DeleteTransactionRuleModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   rule: TransactionRule | null;
-  onSuccess: () => void;
 }
 
 export function DeleteTransactionRuleModal({
   open,
   onOpenChange,
   rule,
-  onSuccess,
 }: DeleteTransactionRuleModalProps) {
-  const { token } = useAuthStore();
+  const deleteTransactionRule = useMutation(
+    api.transactionRules.deleteTransactionRule
+  );
   const [loading, setLoading] = useState(false);
 
   const handleDelete = async () => {
@@ -36,20 +38,9 @@ export function DeleteTransactionRuleModal({
 
     try {
       setLoading(true);
-      const response = await fetch(`/api/transaction-rules/${rule.id}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete transaction rule');
-      }
+      await deleteTransactionRule({ id: rule.id as Id<'transaction_rules'> });
 
       toast.success('Transaction rule deleted successfully');
-      onSuccess();
       onOpenChange(false);
     } catch (error: any) {
       console.error('Error deleting transaction rule:', error);
