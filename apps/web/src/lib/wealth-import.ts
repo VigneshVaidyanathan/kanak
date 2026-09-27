@@ -1,10 +1,21 @@
-import {
-  createOrUpdateWealthEntries,
-  createWealthLineItem,
-  createWealthSection,
-  getWealthSectionsByUserId,
-} from '@kanak/api';
+import type { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
+import type { FunctionReturnType } from 'convex/server';
+import type { ReactMutation } from 'convex/react';
 import { parseWealthCsv } from './wealth-csv';
+
+/**
+ * The Convex functions this import needs, passed in rather than imported, so
+ * the orchestration stays a plain function and the caller owns the hooks.
+ */
+export type WealthImportApi = {
+  getSections: () => Promise<
+    FunctionReturnType<typeof api.wealth.getWealthSectionsByUserId>
+  >;
+  createSection: ReactMutation<typeof api.wealth.createWealthSection>;
+  createLineItem: ReactMutation<typeof api.wealth.createWealthLineItem>;
+  createEntries: ReactMutation<typeof api.wealth.createOrUpdateWealthEntries>;
+};
 
 export type WealthImportResult = {
   dates: number;
@@ -52,7 +63,7 @@ function dateFromKey(dateKey: string): Date {
  * genuinely new is created. Values are upserted per date, so re-running is safe.
  */
 export async function importWealthCsv(
-  userId: string,
+  convexApi: WealthImportApi,
   csv: string
 ): Promise<WealthImportResult> {
   const parsed = parseWealthCsv(csv);
@@ -79,7 +90,7 @@ export async function importWealthCsv(
     })
   );
 
-  const existingSections = await getWealthSectionsByUserId(userId);
+  const existingSections = await convexApi.getSections();
   const sectionByName = new Map<string, any>(
     existingSections.map((s) => [normalize(s.name), s])
   );
@@ -113,7 +124,7 @@ export async function importWealthCsv(
     const sectionKey = normalize(target.sectionName);
     let section = sectionByName.get(sectionKey);
     if (!section) {
-      section = await createWealthSection(userId, {
+      section = await convexApi.createSection({
         name: target.sectionName,
         operation: target.operation,
         order: nextSectionOrder++,
@@ -129,8 +140,8 @@ export async function importWealthCsv(
       matchedLineItems++;
     } else {
       const order = nextLineItemOrder.get(sectionKey) ?? 0;
-      const lineItem = await createWealthLineItem(userId, {
-        sectionId: section.id,
+      const lineItem = await convexApi.createLineItem({
+        sectionId: section.id as Id<'wealth_sections'>,
         name: target.lineItemName,
         order,
       });
@@ -157,9 +168,12 @@ export async function importWealthCsv(
   // ponytail: sequential, one mutation per date (~40 for a full sheet).
   // Batch inside Convex if this ever gets slow enough to matter.
   for (const [dateKey, dateEntries] of byDate) {
-    await createOrUpdateWealthEntries(userId, {
-      date: dateFromKey(dateKey),
-      entries: dateEntries,
+    await convexApi.createEntries({
+      date: dateFromKey(dateKey).getTime(),
+      entries: dateEntries.map((entry) => ({
+        lineItemId: entry.lineItemId as Id<'wealth_line_items'>,
+        amount: entry.amount,
+      })),
     });
     entries += dateEntries.length;
   }

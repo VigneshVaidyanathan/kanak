@@ -6,8 +6,11 @@ import { WealthDateCell } from '@/components/wealth/wealth-date-cell';
 import { WealthDatePickerModal } from '@/components/wealth/wealth-date-picker-modal';
 import { WealthLineItemModal } from '@/components/wealth/wealth-line-item-modal';
 import { WealthSectionModal } from '@/components/wealth/wealth-section-modal';
+import { importWealthCsv } from '@/lib/wealth-import';
 import { useAuthStore } from '@/store/auth-store';
 import { NotReadyForMobile } from '@kanak/components';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import {
   Button,
   DropdownMenu,
@@ -35,6 +38,7 @@ import {
   IconTrendingUp,
   IconUpload,
 } from '@tabler/icons-react';
+import { useConvex, useMutation, useQuery } from 'convex/react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -123,11 +127,31 @@ function getRangeBounds(range: DateRangeOption): {
   }
 }
 
+/** YYYY-MM-DD to UTC midnight, so a date key never shifts with the timezone. */
+function parseUTCDateKey(dateKey: string): number {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return Date.UTC(year, month - 1, day);
+}
+
 export default function WealthPage() {
+  const convex = useConvex();
+  const createWealthSection = useMutation(api.wealth.createWealthSection);
+  const createWealthLineItem = useMutation(api.wealth.createWealthLineItem);
+  const createOrUpdateWealthEntries = useMutation(
+    api.wealth.createOrUpdateWealthEntries
+  );
+  const updateWealthEntriesDate = useMutation(
+    api.wealth.updateWealthEntriesDate
+  );
+  const updateWealthSectionsOrder = useMutation(
+    api.wealth.updateWealthSectionsOrder
+  );
+  const updateWealthLineItemsOrder = useMutation(
+    api.wealth.updateWealthLineItemsOrder
+  );
   const { isDesktop } = useDevice();
   const router = useRouter();
   const { isAuthenticated, token } = useAuthStore();
-  const [loading, setLoading] = useState(true);
   const [wealthData, setWealthData] = useState<WealthData | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [dates, setDates] = useState<Date[]>([]);
@@ -194,111 +218,59 @@ export default function WealthPage() {
     return new Date(Date.UTC(year, month - 1, day));
   }, []);
 
-  // Fetch wealth data for the selected range
-  const fetchWealthData = useCallback(async () => {
-    if (!token) return;
+  // Sections and the range's entries. The grid keeps its own `entryValues`
+  // because cells are editable with auto-save, so the query result is copied
+  // into local state on load rather than rendered directly.
+  const { startDate: rangeStart, endDate: rangeEnd } = useMemo(
+    () => getRangeBounds(dateRange),
+    [dateRange]
+  );
+  const sectionsResult = useQuery(api.wealth.getWealthSectionsByUserId, {});
+  const entriesResult = useQuery(api.wealth.getWealthEntriesByDateRange, {
+    startDate: rangeStart.getTime(),
+    endDate: rangeEnd.getTime(),
+  });
+  const loading = sectionsResult === undefined || entriesResult === undefined;
 
-    try {
-      setLoading(true);
+  useEffect(() => {
+    if (sectionsResult === undefined || entriesResult === undefined) return;
 
-      const { startDate, endDate } = getRangeBounds(dateRange);
-      const response = await fetch(
-        `/api/wealth?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+    setWealthData({
+      sections: sectionsResult,
+      entries: entriesResult,
+    } as unknown as WealthData);
 
-      if (response.ok) {
-        const data: WealthData = await response.json();
-        setWealthData(data);
-
-        // Extract unique dates from entries and sort chronologically (latest first)
-        const uniqueDates = new Set<string>();
-        const values: Record<string, Record<string, number>> = {};
-        if (data.entries) {
-          data.entries.forEach((entry) => {
-            // Parse the date string from API (YYYY-MM-DD format)
-            const entryDate = new Date(entry.date);
-            const dateKey = formatDateKey(entryDate);
-            uniqueDates.add(dateKey);
-            if (!values[dateKey]) {
-              values[dateKey] = {};
-            }
-            values[dateKey][entry.lineItemId] = entry.amount;
-          });
-        }
-
-        // Convert to Date objects and sort descending (latest first)
-        const sortedDates = Array.from(uniqueDates)
-          .map((dateStr) => {
-            return parseDateKey(dateStr);
-          })
-          .sort((a, b) => b.getTime() - a.getTime());
-
-        setDates(sortedDates);
-        setEntryValues(values);
-        // Store initial values for comparison
-        initialEntryValuesRef.current = JSON.parse(JSON.stringify(values));
-        hasUserMadeChangeRef.current = false;
-        // Mark that initial load is complete after a delay to ensure state is set
-        // This prevents auto-save from triggering when data is loaded from API
-        setTimeout(() => {
-          isInitialLoadRef.current = false;
-        }, 500);
-      }
-    } catch (error) {
-      console.error('Error fetching wealth data:', error);
-    } finally {
-      setLoading(false);
+    const uniqueDates = new Set<string>();
+    const values: Record<string, Record<string, number>> = {};
+    for (const entry of entriesResult) {
+      const dateKey = formatDateKey(new Date(entry.date));
+      uniqueDates.add(dateKey);
+      values[dateKey] ??= {};
+      values[dateKey][entry.lineItemId] = entry.amount;
     }
-  }, [token, dateRange, formatDateKey, parseDateKey]);
+
+    // Latest first.
+    setDates(
+      Array.from(uniqueDates)
+        .map(parseDateKey)
+        .sort((a, b) => b.getTime() - a.getTime())
+    );
+    setEntryValues(values);
+    initialEntryValuesRef.current = JSON.parse(JSON.stringify(values));
+    hasUserMadeChangeRef.current = false;
+    // Let the state settle before auto-save starts watching, or loading the
+    // data would look like an edit.
+    const timer = setTimeout(() => {
+      isInitialLoadRef.current = false;
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [sectionsResult, entriesResult, formatDateKey, parseDateKey]);
 
   // ponytail: refetch once per (token, range). StrictMode double-invokes effects
   // in dev and setAuth re-runs this one, so the guard stops duplicate requests.
   const lastFetchKeyRef = useRef<string | null>(null);
 
   // Initial data fetch
-  useEffect(() => {
-    const checkAuthAndFetch = () => {
-      const fetchKey = `${token ?? ''}|${dateRange}`;
-      if (lastFetchKeyRef.current === fetchKey) return;
-      if (typeof window !== 'undefined') {
-        const storedAuth = localStorage.getItem('auth-storage');
-        if (storedAuth) {
-          try {
-            const parsed = JSON.parse(storedAuth);
-            if (parsed.state?.token && parsed.state?.user) {
-              if (!isAuthenticated) {
-                const { setAuth } = useAuthStore.getState();
-                setAuth(parsed.state.user, parsed.state.token);
-              }
-              lastFetchKeyRef.current = fetchKey;
-              fetchWealthData();
-              return;
-            }
-          } catch (e) {
-            // Invalid stored data
-          }
-        }
-      }
-
-      if (!isAuthenticated && !token) {
-        router.push('/auth');
-        return;
-      }
-
-      if (isAuthenticated || token) {
-        lastFetchKeyRef.current = fetchKey;
-        fetchWealthData();
-      }
-    };
-
-    checkAuthAndFetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, token, router, dateRange]);
 
   // Dates are now extracted from entries, so we don't need to refetch on date changes
 
@@ -405,22 +377,13 @@ export default function WealthPage() {
               amount: entryValues[dateKey]?.[lineItem.id] || 0,
             }));
 
-          const response = await fetch('/api/wealth/entries', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              date: dateKey,
-              entries,
-            }),
+          await createOrUpdateWealthEntries({
+            date: parseUTCDateKey(dateKey),
+            entries: entries.map((entry) => ({
+              lineItemId: entry.lineItemId as Id<'wealth_line_items'>,
+              amount: entry.amount,
+            })),
           });
-
-          if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to save entries');
-          }
         });
 
       if (savePromises.length > 0) {
@@ -445,6 +408,7 @@ export default function WealthPage() {
     dates,
     formatDateKey,
     hasEntryValuesChanged,
+    createOrUpdateWealthEntries,
   ]);
 
   // Debounced auto-save - only save when entryValues actually change (user edits)
@@ -545,29 +509,34 @@ export default function WealthPage() {
 
       const toastId = toast.loading(`Uploading ${file.name}...`);
       try {
-        const response = await fetch('/api/wealth/import', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
+        const result = await importWealthCsv(
+          {
+            getSections: () =>
+              convex.query(api.wealth.getWealthSectionsByUserId, {}),
+            createSection: createWealthSection,
+            createLineItem: createWealthLineItem,
+            createEntries: createOrUpdateWealthEntries,
           },
-          body: JSON.stringify({ csv: await file.text() }),
-        });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Upload failed');
+          await file.text()
+        );
 
         toast.success(
           `Imported ${result.entries} values across ${result.dates} dates`,
           { id: toastId }
         );
-        await fetchWealthData();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Upload failed', {
           id: toastId,
         });
       }
     },
-    [token, fetchWealthData]
+    [
+      token,
+      convex,
+      createWealthSection,
+      createWealthLineItem,
+      createOrUpdateWealthEntries,
+    ]
   );
 
   const handleAddDate = useCallback((): void => {
@@ -607,21 +576,10 @@ export default function WealthPage() {
           return;
         }
         try {
-          const response = await fetch('/api/wealth/entries', {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              oldDate: oldDateKey,
-              newDate: newDateKey,
-            }),
+          await updateWealthEntriesDate({
+            oldDateTimestamp: parseUTCDateKey(oldDateKey),
+            newDateTimestamp: parseUTCDateKey(newDateKey),
           });
-          if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.error || 'Failed to update date');
-          }
           setDates((prev) =>
             prev
               .map((d) => (formatDateKey(d) === oldDateKey ? newDateUTC : d))
@@ -664,7 +622,7 @@ export default function WealthPage() {
       });
       setDatePickerModalOpen(false);
     },
-    [dates, formatDateKey, editingDate, token]
+    [dates, formatDateKey, editingDate, updateWealthEntriesDate]
   );
 
   // Calculate section totals
@@ -836,33 +794,23 @@ export default function WealthPage() {
           order: index,
         }));
 
-        const response = await fetch('/api/wealth/sections/reorder', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ updates }),
+        await updateWealthSectionsOrder({
+          updates: updates.map((update: { id: string; order: number }) => ({
+            id: update.id as Id<'wealth_sections'>,
+            order: update.order,
+          })),
         });
-
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Failed to save order');
-        }
-
-        const savedSections = await response.json();
-        setWealthData({ ...wealthData, sections: savedSections });
         toast.success('Sections reordered successfully');
       } catch (error: any) {
         console.error('Error saving section order:', error);
         toast.error(error.message || 'Failed to save order');
-        fetchWealthData(); // Revert on error
+        // The live query is the source of truth; it re-renders on its own.
       } finally {
         setIsReordering(false);
         setDraggedSectionId(null);
       }
     },
-    [draggedSectionId, wealthData, token, fetchWealthData]
+    [draggedSectionId, wealthData, updateWealthSectionsOrder]
   );
 
   // Drag and drop handlers for line items
@@ -937,32 +885,24 @@ export default function WealthPage() {
           order: index,
         }));
 
-        const response = await fetch('/api/wealth/line-items/reorder', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ updates }),
+        await updateWealthLineItemsOrder({
+          updates: updates.map((update: { id: string; order: number }) => ({
+            id: update.id as Id<'wealth_line_items'>,
+            order: update.order,
+          })),
         });
 
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Failed to save order');
-        }
-
         toast.success('Line items reordered successfully');
-        fetchWealthData();
       } catch (error: any) {
         console.error('Error saving line item order:', error);
         toast.error(error.message || 'Failed to save order');
-        fetchWealthData(); // Revert on error
+        // The live query is the source of truth; it re-renders on its own.
       } finally {
         setIsReordering(false);
         setDraggedLineItemId(null);
       }
     },
-    [draggedLineItemId, wealthData, token, fetchWealthData]
+    [draggedLineItemId, wealthData, updateWealthLineItemsOrder]
   );
 
   // Create flattened data structure for column-based layout
@@ -1606,10 +1546,6 @@ export default function WealthPage() {
         open={sectionModalOpen}
         onOpenChange={setSectionModalOpen}
         section={editingSection}
-        onSuccess={() => {
-          fetchWealthData();
-          setSectionModalOpen(false);
-        }}
       />
 
       <WealthLineItemModal
@@ -1619,11 +1555,6 @@ export default function WealthPage() {
         sectionId={
           editingLineItem?.sectionId || selectedSectionForLineItem || ''
         }
-        onSuccess={() => {
-          fetchWealthData();
-          setLineItemModalOpen(false);
-          setSelectedSectionForLineItem(null);
-        }}
       />
 
       <WealthDatePickerModal
@@ -1641,20 +1572,12 @@ export default function WealthPage() {
         open={deleteLineItemModalOpen}
         onOpenChange={setDeleteLineItemModalOpen}
         lineItem={lineItemToDelete}
-        onSuccess={() => {
-          fetchWealthData();
-          setLineItemToDelete(null);
-        }}
       />
 
       <DeleteSectionModal
         open={deleteSectionModalOpen}
         onOpenChange={setDeleteSectionModalOpen}
         section={sectionToDelete}
-        onSuccess={() => {
-          fetchWealthData();
-          setSectionToDelete(null);
-        }}
       />
     </div>
   );

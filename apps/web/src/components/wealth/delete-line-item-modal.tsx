@@ -1,6 +1,7 @@
 'use client';
 
-import { useAuthStore } from '@/store/auth-store';
+import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import {
   Button,
   Dialog,
@@ -11,6 +12,7 @@ import {
   Spinner,
 } from '@kanak/ui';
 import { IconX } from '@tabler/icons-react';
+import { useMutation } from 'convex/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -18,37 +20,28 @@ interface DeleteLineItemModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   lineItem: { id: string; name: string } | null;
-  onSuccess: () => void;
 }
 
 export function DeleteLineItemModal({
   open,
   onOpenChange,
   lineItem,
-  onSuccess,
 }: DeleteLineItemModalProps) {
-  const { token } = useAuthStore();
+  const softDeleteWealthLineItem = useMutation(
+    api.wealth.softDeleteWealthLineItem
+  );
   const [loading, setLoading] = useState(false);
 
   const handleDelete = async () => {
-    if (!lineItem || !token) return;
+    if (!lineItem) return;
 
     try {
       setLoading(true);
-      const response = await fetch(`/api/wealth/line-items/${lineItem.id}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      await softDeleteWealthLineItem({
+        id: lineItem.id as Id<'wealth_line_items'>,
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete line item');
-      }
-
       toast.success('Line item deleted successfully');
-      onSuccess();
       onOpenChange(false);
     } catch (error: any) {
       console.error('Error deleting line item:', error);

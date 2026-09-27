@@ -5,8 +5,8 @@ import { TotalWealthAreaChart } from '@/components/reports/total-wealth-area-cha
 import { TotalWealthChart } from '@/components/reports/total-wealth-chart';
 import { TotalWealthStat } from '@/components/reports/total-wealth-stat';
 import { WealthBreakupChart } from '@/components/reports/wealth-breakup-chart';
-import { useAuthStore } from '@/store/auth-store';
 import { NotReadyForMobile } from '@kanak/components';
+import { api } from '@kanak/convex/src/_generated/api';
 import {
   Button,
   DropdownMenu,
@@ -17,6 +17,7 @@ import {
   useDevice,
 } from '@kanak/ui';
 import { IconChevronDown } from '@tabler/icons-react';
+import { useQuery } from 'convex/react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -60,9 +61,29 @@ interface WealthData {
 export default function ReportsPage() {
   const { isDesktop } = useDevice();
   const router = useRouter();
-  const { isAuthenticated, token } = useAuthStore();
-  const [loading, setLoading] = useState(true);
-  const [wealthData, setWealthData] = useState<WealthData | null>(null);
+  // The route this replaced defaulted to the last 12 months; that default is
+  // explicit here.
+  const { rangeStart, rangeEnd } = useMemo(() => {
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    const start = new Date();
+    start.setMonth(start.getMonth() - 12);
+    start.setHours(0, 0, 0, 0);
+    return { rangeStart: start.getTime(), rangeEnd: end.getTime() };
+  }, []);
+  const sections = useQuery(api.wealth.getWealthSectionsByUserId, {});
+  const entries = useQuery(api.wealth.getWealthEntriesByDateRange, {
+    startDate: rangeStart,
+    endDate: rangeEnd,
+  });
+  const loading = sections === undefined || entries === undefined;
+  const wealthData = useMemo(
+    () =>
+      sections && entries
+        ? ({ sections, entries } as unknown as WealthData)
+        : null,
+    [sections, entries]
+  );
 
   // Helper function to format date as YYYY-MM-DD in local timezone
   const formatDateKey = useCallback((date: Date): string => {
@@ -77,65 +98,6 @@ export default function ReportsPage() {
     const [year, month, day] = dateStr.split('-').map(Number);
     return new Date(year, month - 1, day);
   }, []);
-
-  // Fetch wealth data
-  const fetchWealthData = useCallback(async () => {
-    if (!token) return;
-
-    try {
-      setLoading(true);
-      const response = await fetch('/api/wealth', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (response.ok) {
-        const data: WealthData = await response.json();
-        setWealthData(data);
-      }
-    } catch (error) {
-      console.error('Error fetching wealth data:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
-  // Initial data fetch
-  useEffect(() => {
-    const checkAuthAndFetch = () => {
-      if (typeof window !== 'undefined') {
-        const storedAuth = localStorage.getItem('auth-storage');
-        if (storedAuth) {
-          try {
-            const parsed = JSON.parse(storedAuth);
-            if (parsed.state?.token && parsed.state?.user) {
-              if (!isAuthenticated) {
-                const { setAuth } = useAuthStore.getState();
-                setAuth(parsed.state.user, parsed.state.token);
-              }
-              fetchWealthData();
-              return;
-            }
-          } catch (e) {
-            // Invalid stored data
-          }
-        }
-      }
-
-      if (!isAuthenticated && !token) {
-        router.push('/auth');
-        return;
-      }
-
-      if (isAuthenticated || token) {
-        fetchWealthData();
-      }
-    };
-
-    checkAuthAndFetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, token, router]);
 
   // Process data for charts
   const processedData = useMemo(() => {
@@ -361,7 +323,7 @@ export default function ReportsPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={fetchWealthData}>
+              <DropdownMenuItem onClick={() => window.location.reload()}>
                 Refresh Data
               </DropdownMenuItem>
             </DropdownMenuContent>
