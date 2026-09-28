@@ -42,11 +42,8 @@ export async function upsertTransactionsChunked(
     }));
 
     const batch = await upsert({ transactions: chunk });
-
-    for (const result of batch) {
-      if (result.action === 'created') created++;
-      else updated++;
-    }
+    created += batch.created;
+    updated += batch.updated;
   }
 
   return { created, updated, total: inputs.length };

@@ -4,7 +4,7 @@ import type {
   TransactionRuleAction,
 } from '@kanak/shared';
 import { v } from 'convex/values';
-import type { Doc } from './_generated/dataModel.js';
+import type { Doc, Id } from './_generated/dataModel.js';
 import type { MutationCtx } from './_generated/server.js';
 import { mutation, query } from './_generated/server.js';
 import { requireUser } from './lib/auth.js';
@@ -74,7 +74,9 @@ async function recordHistory(
 
 // Matches the shape the deleted API layer used to map: `id`, not `_id`, and
 // epoch-millisecond timestamps, since Convex cannot serialize a Date.
-export function toTransaction(transaction: Doc<'transactions'>) {
+export function toTransaction(
+  transaction: Omit<Doc<'transactions'>, '_creationTime'>
+) {
   return {
     id: transaction._id,
     date: transaction.date,
@@ -171,15 +173,18 @@ export const createTransaction = mutation({
     const userId = await requireUser(ctx);
     const now = Date.now();
 
-    const transactionId = await ctx.db.insert('transactions', {
+    const inserted = {
       ...args,
       accountingDate: args.accountingDate ?? args.date,
       userId,
       createdAt: now,
       updatedAt: now,
-    });
+    };
+    const transactionId = await ctx.db.insert('transactions', inserted);
 
-    return toTransaction((await ctx.db.get(transactionId))!);
+    // The inserted values are already in hand; reading the row back would be a
+    // second read of something we just wrote.
+    return toTransaction({ _id: transactionId, ...inserted });
   },
 });
 
@@ -242,9 +247,10 @@ export const updateTransaction = mutation({
       batchId: crypto.randomUUID(),
       source: 'update',
     });
-    await ctx.db.patch(id, { ...updates, updatedAt: Date.now() });
+    const patch = { ...updates, updatedAt: Date.now() };
+    await ctx.db.patch(id, patch);
 
-    return toTransaction((await ctx.db.get(id))!);
+    return toTransaction({ ...existing, ...patch });
   },
 });
 
@@ -344,44 +350,57 @@ export const upsertTransactionsBatch = mutation({
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .collect();
 
-    const byKey = new Map(
-      existing.filter(isLive).map((t) => [duplicateKey(t), t])
+    // Only the id and accountingDate are needed to dedupe against a row, so
+    // the map holds those rather than whole documents.
+    const byKey = new Map<
+      string,
+      { id: Id<'transactions'>; accountingDate: number }
+    >(
+      existing
+        .filter(isLive)
+        .map((t) => [
+          duplicateKey(t),
+          { id: t._id, accountingDate: t.accountingDate },
+        ])
     );
     const now = Date.now();
-    const results: Array<{
-      action: 'created' | 'updated';
-      transaction: Doc<'transactions'>;
-    }> = [];
+    let created = 0;
+    let updated = 0;
 
     for (const input of args.transactions) {
-      const match = byKey.get(duplicateKey(input));
+      const key = duplicateKey(input);
+      const match = byKey.get(key);
 
       if (match) {
-        await ctx.db.patch(match._id, {
+        // A patch never changes the duplicate key, so the entry keeps its slot
+        // and later rows in the batch still dedupe against it.
+        const accountingDate = input.accountingDate ?? match.accountingDate;
+        await ctx.db.patch(match.id, {
           ...input,
-          accountingDate: input.accountingDate ?? match.accountingDate,
+          accountingDate,
           updatedAt: now,
         });
-        const updated = (await ctx.db.get(match._id))!;
-        byKey.set(duplicateKey(updated), updated);
-        results.push({ action: 'updated', transaction: updated });
+        byKey.set(key, { id: match.id, accountingDate });
+        updated++;
         continue;
       }
 
+      const accountingDate = input.accountingDate ?? input.date;
       const id = await ctx.db.insert('transactions', {
         ...input,
-        accountingDate: input.accountingDate ?? input.date,
+        accountingDate,
         userId,
         createdAt: now,
         updatedAt: now,
       });
-      const created = (await ctx.db.get(id))!;
       // Later rows in the same batch dedupe against this one too.
-      byKey.set(duplicateKey(created), created);
-      results.push({ action: 'created', transaction: created });
+      byKey.set(key, { id, accountingDate });
+      created++;
     }
 
-    return results;
+    // Counts only: the caller tallies created vs updated, and returning a
+    // document per row made a 500-row chunk read and ship 500 rows it drops.
+    return { created, updated };
   },
 });
 
@@ -405,7 +424,7 @@ export const updateTransactionsBatch = mutation({
     const now = Date.now();
     // One batchId for the whole bulk action, so `revertBatch` can undo it whole.
     const batchId = crypto.randomUUID();
-    const updated: Array<Doc<'transactions'>> = [];
+    const updated: Array<Omit<Doc<'transactions'>, '_creationTime'>> = [];
     const failed: Array<{ id: string; error: string }> = [];
 
     for (const { id, ...fields } of args.updates) {
@@ -422,7 +441,7 @@ export const updateTransactionsBatch = mutation({
         source: 'batch',
       });
       await ctx.db.patch(id, { ...fields, updatedAt: now });
-      updated.push((await ctx.db.get(id))!);
+      updated.push({ ...existing, ...fields, updatedAt: now });
     }
 
     return { batchId, updated: updated.map(toTransaction), failed };
