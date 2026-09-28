@@ -207,34 +207,6 @@ export const createTransaction = mutation({
   },
 });
 
-export const findDuplicateTransaction = query({
-  args: {
-    date: v.number(),
-    amount: v.number(),
-    description: v.string(),
-    type: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
-
-    const transactions = await ctx.db
-      .query('transactions')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .collect();
-
-    const match = transactions.find(
-      (t) =>
-        isLive(t) &&
-        t.date === args.date &&
-        t.amount === args.amount &&
-        t.description === args.description &&
-        t.type === args.type
-    );
-
-    return match ? toTransaction(match) : null;
-  },
-});
-
 export const updateTransaction = mutation({
   args: {
     id: v.id('transactions'),
@@ -361,12 +333,20 @@ export const upsertTransactionsBatch = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
 
-    // ponytail: one full scan per call instead of one per row. Batch in
-    // chunks on the caller side; switch to a by_userId_date index lookup if
-    // a single user's transaction count outgrows the read limit.
+    if (args.transactions.length === 0) return { created: 0, updated: 0 };
+
+    // A duplicate shares its `date` with the input it matches, so every row
+    // that could match this chunk lies inside the chunk's own date span. One
+    // bounded read replaces a scan of the user's whole history.
+    const dates = args.transactions.map((t) => t.date);
     const existing = await ctx.db
       .query('transactions')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_userId_date', (q) =>
+        q
+          .eq('userId', userId)
+          .gte('date', Math.min(...dates))
+          .lte('date', Math.max(...dates))
+      )
       .collect();
 
     // Only the id and accountingDate are needed to dedupe against a row, so

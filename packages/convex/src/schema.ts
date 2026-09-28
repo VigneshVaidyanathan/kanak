@@ -45,7 +45,9 @@ export default defineSchema({
     .index('by_accountingDate', ['accountingDate'])
     // Reads are almost always "this user, this date window": the transactions
     // page and budget actuals both scope by accountingDate.
-    .index('by_userId_accountingDate', ['userId', 'accountingDate']),
+    .index('by_userId_accountingDate', ['userId', 'accountingDate'])
+    // Import dedupe matches on `date`, not accountingDate, so it needs its own.
+    .index('by_userId_date', ['userId', 'date']),
 
   categories: defineTable({
     title: v.string(),
