@@ -251,7 +251,8 @@ export function TransactionRulesSection() {
                   onDragEnd={handleDragEnd}
                   onDragOver={handleDragOver}
                   onDrop={(e) => handleDrop(e, rule.id)}
-                  className={`flex items-center gap-3 border border-gray-200 rounded-lg p-2 py-1 bg-white hover:border-primary transition-all ${
+                  onDoubleClick={() => handleEdit(rule)}
+                  className={`flex items-center gap-3 border border-gray-200 rounded-lg p-2 py-1 bg-white hover:border-primary transition-all cursor-pointer select-none ${
                     isDragging ? 'opacity-50' : ''
                   }`}
                 >

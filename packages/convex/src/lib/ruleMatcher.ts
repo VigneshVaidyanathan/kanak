@@ -190,6 +190,24 @@ export function matchesFilter(
 ): boolean {
   const field = filter.field as FilterFieldType;
   const transactionValue = getTransactionFieldValue(transaction, field);
+
+  // Selection fields (type, bankAccount) store multiple picks as "a,b".
+  // Equals means any of them; not-equals means none of them.
+  if (
+    (field === 'type' || field === 'bankAccount') &&
+    (filter.operator === 'equals' || filter.operator === 'notEquals') &&
+    filter.value.includes(',')
+  ) {
+    const values = filter.value
+      .split(',')
+      .map((v) => v.trim())
+      .filter(Boolean);
+    const anyMatch = values.some((value) =>
+      compareValues(transactionValue, value, 'equals', field)
+    );
+    return filter.operator === 'equals' ? anyMatch : !anyMatch;
+  }
+
   return compareValues(transactionValue, filter.value, filter.operator, field);
 }
 

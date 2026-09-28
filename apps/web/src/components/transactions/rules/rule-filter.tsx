@@ -1,6 +1,8 @@
 'use client';
 
+import { api } from '@kanak/convex/src/_generated/api';
 import {
+  BankAccount,
   Filter,
   FILTER_OPERATOR_OPTIONS,
   FilterComparisonOperator,
@@ -36,7 +38,8 @@ import {
   IconLetterCase,
   IconSelector,
 } from '@tabler/icons-react';
-import { useEffect, useState } from 'react';
+import { useQuery } from 'convex/react';
+import { useEffect, useMemo, useState } from 'react';
 
 interface RuleFilterProps {
   filter: Filter;
@@ -89,6 +92,16 @@ export function RuleFilter({ filter, onFilterChange }: RuleFilterProps) {
   const getAvailableOperators = () => {
     if (!selectedFilterField) return FILTER_OPERATOR_OPTIONS;
 
+    // Selection fields (pick from a list) only support exact match.
+    if (
+      selectedFilterField.value === 'bankAccount' ||
+      selectedFilterField.value === 'type'
+    ) {
+      return FILTER_OPERATOR_OPTIONS.filter((op) =>
+        ['equals', 'notEquals'].includes(op.value)
+      );
+    }
+
     if (
       selectedFilterField.type === 'number' ||
       selectedFilterField.type === 'date'
@@ -109,28 +122,39 @@ export function RuleFilter({ filter, onFilterChange }: RuleFilterProps) {
     }
   };
 
+  const isBankAccountField = selectedFilterField?.value === 'bankAccount';
+  const bankAccountsResult = useQuery(
+    api.bankAccounts.getBankAccountsByUserId,
+    {}
+  );
+  const bankAccounts = useMemo(
+    () => (bankAccountsResult ?? []) as BankAccount[],
+    [bankAccountsResult]
+  );
+
   const isTransactionTypeField = selectedFilterField?.value === 'type';
-  const selectedValues: ('credit' | 'debit')[] = isTransactionTypeField
+  // Selection fields store their picks as a comma-separated list.
+  const selectionOptions: { value: string; label: string }[] | null =
+    isTransactionTypeField
+      ? [
+          { value: 'credit', label: 'Credit' },
+          { value: 'debit', label: 'Debit' },
+        ]
+      : isBankAccountField
+        ? bankAccounts.map((a) => ({ value: a.name, label: a.name }))
+        : null;
+
+  const selectedValues = selectionOptions
     ? localFilter.value
-      ? localFilter.value
-          .split(',')
-          .map((v) => v.trim().toLowerCase())
-          .filter(
-            (v): v is 'credit' | 'debit' => v === 'credit' || v === 'debit'
-          )
-      : []
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean)
     : [];
 
-  const handleTransactionTypeChange = (value: string) => {
-    const normalizedValue = value.toLowerCase().trim() as 'credit' | 'debit';
-    let newValues: ('credit' | 'debit')[];
-    if (selectedValues.includes(normalizedValue)) {
-      // Remove the value
-      newValues = selectedValues.filter((v) => v !== normalizedValue);
-    } else {
-      // Add the normalized value
-      newValues = [...selectedValues, normalizedValue];
-    }
+  const toggleSelectionValue = (value: string) => {
+    const newValues = selectedValues.includes(value)
+      ? selectedValues.filter((v) => v !== value)
+      : [...selectedValues, value];
     handleFilterChange({
       ...localFilter,
       value: newValues.join(','),
@@ -181,6 +205,12 @@ export function RuleFilter({ filter, onFilterChange }: RuleFilterProps) {
                     // Reset operator if current operator is not valid for new field type
                     let newOperator = localFilter.operator;
                     if (
+                      (field.value === 'bankAccount' ||
+                        field.value === 'type') &&
+                      !['equals', 'notEquals'].includes(localFilter.operator)
+                    ) {
+                      newOperator = 'equals' as FilterComparisonOperator;
+                    } else if (
                       availableOps?.type === 'text' &&
                       !textOperators.includes(localFilter.operator)
                     ) {
@@ -243,7 +273,7 @@ export function RuleFilter({ filter, onFilterChange }: RuleFilterProps) {
         </Select>
       </div>
       <div className="flex-1">
-        {isTransactionTypeField ? (
+        {selectionOptions ? (
           <Popover>
             <PopoverTrigger asChild>
               <div className="rounded-md border border-input bg-background px-3 py-1.5 text-sm cursor-pointer flex gap-2 items-center hover:bg-accent min-w-[150px]">
@@ -251,34 +281,33 @@ export function RuleFilter({ filter, onFilterChange }: RuleFilterProps) {
                   {selectedValues.length > 0 ? (
                     selectedValues.map((val) => (
                       <Badge key={val} variant="secondary" className="text-xs">
-                        {val === 'credit' ? 'Credit' : 'Debit'}
+                        {selectionOptions.find((o) => o.value === val)?.label ??
+                          val}
                       </Badge>
                     ))
                   ) : (
-                    <span className="text-muted-foreground">
-                      Select types...
-                    </span>
+                    <span className="text-muted-foreground">Select...</span>
                   )}
                 </div>
                 <IconSelector size={16} />
               </div>
             </PopoverTrigger>
-            <PopoverContent className="w-[200px] p-0" align="start">
+            <PopoverContent className="w-[240px] p-0" align="start">
               <Command>
                 <CommandList>
                   <CommandEmpty>No options found.</CommandEmpty>
                   <CommandGroup>
-                    {(['credit', 'debit'] as const).map((type) => (
+                    {selectionOptions.map((option) => (
                       <CommandItem
-                        key={type}
-                        value={type}
-                        onSelect={() => handleTransactionTypeChange(type)}
+                        key={option.value}
+                        value={option.value}
+                        onSelect={() => toggleSelectionValue(option.value)}
                       >
                         <Checkbox
-                          checked={selectedValues.includes(type)}
+                          checked={selectedValues.includes(option.value)}
                           className="mr-2"
                         />
-                        {type === 'credit' ? 'Credit' : 'Debit'}
+                        {option.label}
                       </CommandItem>
                     ))}
                   </CommandGroup>

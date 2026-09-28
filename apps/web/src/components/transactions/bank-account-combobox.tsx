@@ -61,18 +61,27 @@ export function BankAccountCombobox({
           )}
           <div className="flex items-center gap-1 ml-2">
             {selectedBankAccount && (
-              <button
-                type="button"
+              // A <button> here would nest inside the PopoverTrigger button
+              <span
+                role="button"
+                tabIndex={0}
                 onClick={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
                   onValueChange(undefined);
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    onValueChange(undefined);
+                  }
+                }}
                 className="rounded-sm opacity-70 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 aria-label="Clear bank account"
               >
                 <IconX className="h-4 w-4 shrink-0" />
-              </button>
+              </span>
             )}
             <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
           </div>
