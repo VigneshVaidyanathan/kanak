@@ -159,4 +159,35 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index('by_userId', ['userId']),
+
+  // One row per transaction changed by an update, holding the values as they
+  // were just before the patch. A bulk action shares one batchId so the whole
+  // action can be undone together.
+  transaction_history: defineTable({
+    userId: v.id('users'),
+    transactionId: v.id('transactions'),
+    batchId: v.string(),
+    source: v.string(), // "update" | "batch" | "delete"
+    // Only the fields the patch touched, with their previous values. An absent
+    // key means the field had no value before.
+    before: v.object({
+      date: v.optional(v.number()),
+      accountingDate: v.optional(v.number()),
+      description: v.optional(v.string()),
+      amount: v.optional(v.number()),
+      type: v.optional(v.string()),
+      bankAccount: v.optional(v.string()),
+      reason: v.optional(v.string()),
+      category: v.optional(v.string()),
+      notes: v.optional(v.string()),
+      isInternal: v.optional(v.boolean()),
+      isDeleted: v.optional(v.boolean()),
+    }),
+    // Field names the patch changed, so an undo knows which to clear.
+    changed: v.array(v.string()),
+    createdAt: v.number(),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_batchId', ['batchId'])
+    .index('by_transactionId', ['transactionId']),
 });

@@ -5,6 +5,7 @@ import type {
 } from '@kanak/shared';
 import { v } from 'convex/values';
 import type { Doc } from './_generated/dataModel.js';
+import type { MutationCtx } from './_generated/server.js';
 import { mutation, query } from './_generated/server.js';
 import { requireUser } from './lib/auth.js';
 import { matchesGroupFilter } from './lib/ruleMatcher.js';
@@ -12,6 +13,64 @@ import { matchesGroupFilter } from './lib/ruleMatcher.js';
 /** Soft-deleted rows are invisible to every read and every write path. */
 const isLive = (t: Doc<'transactions'> | null): t is Doc<'transactions'> =>
   t !== null && t.isDeleted !== true;
+
+/** Fields an update may touch, and therefore the fields history records. */
+const HISTORY_FIELDS = [
+  'date',
+  'accountingDate',
+  'description',
+  'amount',
+  'type',
+  'bankAccount',
+  'reason',
+  'category',
+  'notes',
+  'isInternal',
+  'isDeleted',
+] as const;
+
+type HistoryField = (typeof HISTORY_FIELDS)[number];
+
+/**
+ * Store the pre-patch values of whatever an update is about to change, so the
+ * whole action can be undone later with `revertBatch`. Rows changed by one bulk
+ * action share a batchId. A no-op patch records nothing.
+ */
+async function recordHistory(
+  ctx: MutationCtx,
+  {
+    existing,
+    updates,
+    batchId,
+    source,
+  }: {
+    existing: Doc<'transactions'>;
+    updates: Partial<Record<HistoryField, unknown>>;
+    batchId: string;
+    source: string;
+  }
+) {
+  const changed = HISTORY_FIELDS.filter(
+    (field) => field in updates && updates[field] !== existing[field]
+  );
+  if (changed.length === 0) return;
+
+  const before: Record<string, unknown> = {};
+  for (const field of changed) {
+    // An absent key means the field had no value before the patch.
+    if (existing[field] !== undefined) before[field] = existing[field];
+  }
+
+  await ctx.db.insert('transaction_history', {
+    userId: existing.userId,
+    transactionId: existing._id,
+    batchId,
+    source,
+    before,
+    changed,
+    createdAt: Date.now(),
+  });
+}
 
 // Matches the shape the deleted API layer used to map: `id`, not `_id`, and
 // epoch-millisecond timestamps, since Convex cannot serialize a Date.
@@ -177,6 +236,12 @@ export const updateTransaction = mutation({
       throw new Error('Transaction not found');
     }
 
+    await recordHistory(ctx, {
+      existing,
+      updates,
+      batchId: crypto.randomUUID(),
+      source: 'update',
+    });
     await ctx.db.patch(id, { ...updates, updatedAt: Date.now() });
 
     return toTransaction((await ctx.db.get(id))!);
@@ -193,6 +258,12 @@ export const deleteTransaction = mutation({
       throw new Error('Transaction not found');
     }
 
+    await recordHistory(ctx, {
+      existing,
+      updates: { isDeleted: true },
+      batchId: crypto.randomUUID(),
+      source: 'delete',
+    });
     await ctx.db.patch(args.id, { isDeleted: true, updatedAt: Date.now() });
     return { success: true };
   },
@@ -218,12 +289,21 @@ export const deleteTransactions = mutation({
     }
 
     const now = Date.now();
+    const batchId = crypto.randomUUID();
+    for (const transaction of validTransactions as Array<Doc<'transactions'>>) {
+      await recordHistory(ctx, {
+        existing: transaction,
+        updates: { isDeleted: true },
+        batchId,
+        source: 'delete',
+      });
+    }
     await Promise.all(
       args.ids.map((id) =>
         ctx.db.patch(id, { isDeleted: true, updatedAt: now })
       )
     );
-    return { success: true as const, count: args.ids.length };
+    return { success: true as const, count: args.ids.length, batchId };
   },
 });
 
@@ -323,6 +403,8 @@ export const updateTransactionsBatch = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
     const now = Date.now();
+    // One batchId for the whole bulk action, so `revertBatch` can undo it whole.
+    const batchId = crypto.randomUUID();
     const updated: Array<Doc<'transactions'>> = [];
     const failed: Array<{ id: string; error: string }> = [];
 
@@ -333,11 +415,17 @@ export const updateTransactionsBatch = mutation({
         continue;
       }
 
+      await recordHistory(ctx, {
+        existing,
+        updates: fields,
+        batchId,
+        source: 'batch',
+      });
       await ctx.db.patch(id, { ...fields, updatedAt: now });
       updated.push((await ctx.db.get(id))!);
     }
 
-    return { updated: updated.map(toTransaction), failed };
+    return { batchId, updated: updated.map(toTransaction), failed };
   },
 });
 
@@ -467,5 +555,97 @@ export const applyRules = mutation({
     }
 
     return { updated, skipped, ruleBreakdown };
+  },
+});
+
+/**
+ * The most recent change batches for a user, newest first. One row per bulk
+ * action, with the number of transactions it touched.
+ */
+export const getRecentHistoryBatches = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    // ponytail: scans the user's history; add a batches table if it ever grows
+    // past a few thousand rows.
+    const rows = await ctx.db
+      .query('transaction_history')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .order('desc')
+      .take(5000);
+
+    const batches = new Map<
+      string,
+      {
+        batchId: string;
+        source: string;
+        createdAt: number;
+        count: number;
+        fields: string[];
+      }
+    >();
+    for (const row of rows) {
+      const batch = batches.get(row.batchId);
+      if (batch) {
+        batch.count += 1;
+        for (const field of row.changed) {
+          if (!batch.fields.includes(field)) batch.fields.push(field);
+        }
+      } else {
+        batches.set(row.batchId, {
+          batchId: row.batchId,
+          source: row.source,
+          createdAt: row.createdAt,
+          count: 1,
+          fields: [...row.changed],
+        });
+      }
+    }
+
+    return [...batches.values()]
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, args.limit ?? 20);
+  },
+});
+
+/**
+ * Undo one change batch: put every field the batch changed back to the value it
+ * held before, clearing fields that had no value. The history rows are consumed,
+ * so a batch can only be reverted once.
+ */
+export const revertBatch = mutation({
+  args: { batchId: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    const rows = await ctx.db
+      .query('transaction_history')
+      .withIndex('by_batchId', (q) => q.eq('batchId', args.batchId))
+      .collect();
+
+    if (rows.length === 0) {
+      throw new Error('Nothing to revert: unknown or already reverted batch');
+    }
+    if (rows.some((row) => row.userId !== userId)) {
+      throw new Error('Nothing to revert: unknown or already reverted batch');
+    }
+
+    const now = Date.now();
+    let reverted = 0;
+    for (const row of rows) {
+      const transaction = await ctx.db.get(row.transactionId);
+      if (transaction && transaction.userId === userId) {
+        const restore: Record<string, unknown> = { updatedAt: now };
+        for (const field of row.changed) {
+          // A field missing from `before` had no value, and patching undefined
+          // removes it again.
+          restore[field] = (row.before as Record<string, unknown>)[field];
+        }
+        await ctx.db.patch(row.transactionId, restore);
+        reverted += 1;
+      }
+      await ctx.db.delete(row._id);
+    }
+
+    return { reverted };
   },
 });
