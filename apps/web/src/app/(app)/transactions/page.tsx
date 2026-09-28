@@ -82,7 +82,6 @@ export default function TransactionsPage() {
     () => (transactionsResult ?? []) as Transaction[],
     [transactionsResult]
   );
-  const [loading, setLoading] = useState(true);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const categoriesResult = useQuery(api.categories.getCategoriesByUserId, {});
   const categories = useMemo(
@@ -99,6 +98,11 @@ export default function TransactionsPage() {
     () => bankAccountsResult ?? [],
     [bankAccountsResult]
   );
+  // ponytail: loading is just "queries not back yet" — no separate state to keep in sync
+  const loading =
+    transactionsResult === undefined ||
+    categoriesResult === undefined ||
+    bankAccountsResult === undefined;
   const [setupRuleModalOpen, setSetupRuleModalOpen] = useState(false);
   const [selectedTextForRule, setSelectedTextForRule] = useState<string>('');
   const [selectedTransactionType, setSelectedTransactionType] = useState<
@@ -242,6 +246,8 @@ export default function TransactionsPage() {
         'filter_amount_max',
       ];
       filterKeys.forEach((key) => params.delete(key));
+      // New filters, new result set: page 1
+      params.delete('page');
 
       // Add new filter params
       filters.forEach((filter) => {
@@ -1302,7 +1308,7 @@ export default function TransactionsPage() {
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setUploadModalOpen(true)}>
                   <IconUpload className="h-4 w-4" />
-                  Upload CSV
+                  Upload statement
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => {

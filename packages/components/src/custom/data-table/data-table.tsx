@@ -128,7 +128,10 @@ export function DataTable<TData, TArgs extends any[]>({
     ) {
       setPaginationState(initialPagination);
     }
-  }, [initialPagination, paginationState.pageIndex, paginationState.pageSize]);
+    // Deps are intentionally only initialPagination: including paginationState
+    // re-runs this on a local page change and resets it before the URL catches
+    // up. Same shape as the column-filter sync below.
+  }, [initialPagination]);
 
   // Sync column filters when initialColumnFilters changes (only if different)
   useEffect(() => {
@@ -295,6 +298,10 @@ export function DataTable<TData, TArgs extends any[]>({
   const table = useReactTable({
     data: tableData,
     columns,
+    // Data arrives async (skeleton rows -> real rows); the default reset would
+    // bounce the user back to page 1 once it lands. Filter changes reset the
+    // page via the URL instead.
+    autoResetPageIndex: false,
     getCoreRowModel: getCoreRowModel(),
     // Only use client-side row models when not in server-side mode
     ...(!serverSide && {
@@ -330,12 +337,12 @@ export function DataTable<TData, TArgs extends any[]>({
     },
     onSortingChange: setSorting,
     onPaginationChange: (updater) => {
-      setPaginationState((prev) => {
-        const newState =
-          typeof updater === 'function' ? updater(prev) : updater;
-        onPaginationChange?.(newState);
-        return newState;
-      });
+      // Resolve outside the state updater: updaters run during render, and the
+      // parent callback navigates (setState on Router).
+      const newState =
+        typeof updater === 'function' ? updater(paginationState) : updater;
+      setPaginationState(newState);
+      onPaginationChange?.(newState);
     },
     onRowSelectionChange: setRowSelection,
     // Enable manual pagination/sorting/filtering when in server-side mode
@@ -345,6 +352,19 @@ export function DataTable<TData, TArgs extends any[]>({
     // Set page count for server-side pagination
     pageCount: serverSide ? totalPages : undefined,
   });
+
+  // Filtering (including global search, which never touches the URL) can leave
+  // pageIndex past the end; autoResetPageIndex is off, so clamp it here.
+  const pageCount = table.getPageCount();
+  useEffect(() => {
+    if (
+      !isTableLoading &&
+      pageCount > 0 &&
+      paginationState.pageIndex > pageCount - 1
+    ) {
+      table.setPageIndex(pageCount - 1);
+    }
+  }, [table, pageCount, paginationState.pageIndex, isTableLoading]);
 
   // Apply global filter when search length > 2 (client-side only)
   useEffect(() => {

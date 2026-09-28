@@ -16,6 +16,9 @@ import {
   SelectValue,
 } from '@kanak/ui';
 
+// ponytail: a page size no table will reach beats a real "no pagination" mode
+const ALL_PAGE_SIZE = 100000;
+
 interface DataTablePaginationProps<TData> {
   table: Table<TData>;
   serverSide?: boolean;
@@ -65,11 +68,12 @@ export function DataTablePagination<TData>({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {[10, 20, 25, 30, 40, 50].map((pageSize) => (
-                <SelectItem key={pageSize} value={`${pageSize}`}>
-                  {pageSize}
+              {[10, 20, 25, 30, 40, 50].map((size) => (
+                <SelectItem key={size} value={`${size}`}>
+                  {size}
                 </SelectItem>
               ))}
+              <SelectItem value={`${ALL_PAGE_SIZE}`}>All</SelectItem>
             </SelectContent>
           </Select>
         </div>
