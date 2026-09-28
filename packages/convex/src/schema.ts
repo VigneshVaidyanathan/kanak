@@ -42,7 +42,10 @@ export default defineSchema({
   })
     .index('by_userId', ['userId'])
     .index('by_date', ['date'])
-    .index('by_accountingDate', ['accountingDate']),
+    .index('by_accountingDate', ['accountingDate'])
+    // Reads are almost always "this user, this date window": the transactions
+    // page and budget actuals both scope by accountingDate.
+    .index('by_userId_accountingDate', ['userId', 'accountingDate']),
 
   categories: defineTable({
     title: v.string(),

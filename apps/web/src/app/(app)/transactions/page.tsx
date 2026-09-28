@@ -69,14 +69,36 @@ import {
 } from '@/components/transactions/date-range-filter';
 import { toast } from 'sonner';
 
+// ?from=YYYY-MM-DD&to=YYYY-MM-DD, defaulting to this month.
+function rangeFromParams(params: URLSearchParams): TransactionDateRange {
+  const from = params.get('from');
+  const to = params.get('to');
+  if (!(from && to)) return getPresetRange('this-month');
+  const [fy, fm, fd] = from.split('-').map(Number);
+  const [ty, tm, td] = to.split('-').map(Number);
+  return {
+    from: new Date(fy, fm - 1, fd),
+    to: new Date(ty, tm - 1, td, 23, 59, 59, 999),
+  };
+}
+
 export default function TransactionsPage() {
   const { isDesktop } = useDevice();
   const router = useRouter();
   const searchParams = useSearchParams();
   const convex = useConvex();
+  const dateRange = useMemo<TransactionDateRange>(
+    () => rangeFromParams(searchParams),
+    [searchParams]
+  );
+  // Scoped to the visible window: this subscription re-runs on every write to
+  // the table, so an unbounded one re-reads the user's whole history each time.
   const transactionsResult = useQuery(
     api.transactions.getTransactionsByUserId,
-    {}
+    {
+      startAccountingDate: dateRange.from.getTime(),
+      endAccountingDate: dateRange.to.getTime(),
+    }
   );
   const transactions = useMemo(
     () => (transactionsResult ?? []) as Transaction[],
@@ -131,21 +153,6 @@ export default function TransactionsPage() {
   const viewType = useMemo<'table' | 'month'>(() => {
     const viewParam = searchParams.get('view');
     return viewParam === 'month' ? 'month' : 'table';
-  }, [searchParams]);
-
-  // Single date filter from URL (?from=YYYY-MM-DD&to=YYYY-MM-DD), default: this month
-  const dateRange = useMemo<TransactionDateRange>(() => {
-    const from = searchParams.get('from');
-    const to = searchParams.get('to');
-    if (from && to) {
-      const [fy, fm, fd] = from.split('-').map(Number);
-      const [ty, tm, td] = to.split('-').map(Number);
-      return {
-        from: new Date(fy, fm - 1, fd),
-        to: new Date(ty, tm - 1, td, 23, 59, 59, 999),
-      };
-    }
-    return getPresetRange('this-month');
   }, [searchParams]);
 
   // Initialize month for month view from URL (format: YYYY-MM)
@@ -446,20 +453,18 @@ export default function TransactionsPage() {
     []
   );
 
-  const bankAccountOptions = useMemo(() => {
-    const uniqueAccounts = new Set<string>();
-    transactions.forEach((t: Transaction) => {
-      if (t.bankAccount && t.bankAccount.trim()) {
-        uniqueAccounts.add(t.bankAccount);
-      }
-    });
-    return Array.from(uniqueAccounts)
-      .sort()
-      .map((account) => ({
-        label: account,
-        value: account,
-      }));
-  }, [transactions]);
+  // From the accounts themselves, not the loaded rows: the rows only cover the
+  // selected date window, so deriving from them would hide accounts with
+  // nothing in range.
+  const bankAccountOptions = useMemo(
+    () =>
+      bankAccounts
+        .map((account) => account.name)
+        .filter((name) => name?.trim())
+        .sort()
+        .map((name) => ({ label: name, value: name })),
+    [bankAccounts]
+  );
 
   const handleApplyRulesToFiltered = useCallback(() => {
     if (filteredTransactions.length > 0) {
@@ -505,23 +510,10 @@ export default function TransactionsPage() {
     [handleEditTransaction, handleDeleteTransaction, handleApplyRulesToFiltered]
   );
 
-  // Filter transactions by the selected date range (accountingDate)
-  const filteredTransactionsByYear = useMemo(() => {
-    const from = dateRange.from.getTime();
-    const to = dateRange.to.getTime();
-    return transactions.filter((t: Transaction) => {
-      const accountingDate = (t as any).accountingDate
-        ? new Date((t as any).accountingDate)
-        : new Date(t.date);
-      const time = accountingDate.getTime();
-      return time >= from && time <= to;
-    });
-  }, [transactions, dateRange]);
-
   // Group transactions by month for month view using accountingDate
   const transactionsByMonth = useMemo(() => {
     const grouped: Record<string, Transaction[]> = {};
-    filteredTransactionsByYear.forEach((transaction: Transaction) => {
+    transactions.forEach((transaction: Transaction) => {
       const accountingDate = (transaction as any).accountingDate
         ? new Date((transaction as any).accountingDate)
         : new Date(transaction.date);
@@ -542,7 +534,7 @@ export default function TransactionsPage() {
           (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
         ),
       }));
-  }, [filteredTransactionsByYear]);
+  }, [transactions]);
 
   // Get transactions for selected month
   const selectedMonthTransactions = useMemo(() => {
@@ -1267,11 +1259,7 @@ export default function TransactionsPage() {
       </div>
 
       <DataTable
-        data={
-          viewType === 'month'
-            ? monthViewTransactions
-            : filteredTransactionsByYear
-        }
+        data={viewType === 'month' ? monthViewTransactions : transactions}
         columns={columns}
         isLoading={viewType === 'month' ? monthViewLoading : loading}
         searchPlaceholder="Filter transactions..."

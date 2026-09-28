@@ -5,7 +5,7 @@ import type {
 } from '@kanak/shared';
 import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel.js';
-import type { MutationCtx } from './_generated/server.js';
+import type { MutationCtx, QueryCtx } from './_generated/server.js';
 import { mutation, query } from './_generated/server.js';
 import { requireUser } from './lib/auth.js';
 import { matchesGroupFilter } from './lib/ruleMatcher.js';
@@ -72,6 +72,34 @@ async function recordHistory(
   });
 }
 
+/** Index range arguments shared by the two windowed reads. */
+const accountingDateRange = {
+  startAccountingDate: v.number(),
+  endAccountingDate: v.number(),
+};
+
+/**
+ * The user's transactions whose accountingDate falls inside the window
+ * (inclusive), read straight off the index rather than scanned and filtered.
+ * The window is required: an unbounded read of a subscribed query is what made
+ * these the most expensive reads in the deployment.
+ */
+function accountingDateRangeQuery(
+  ctx: QueryCtx,
+  userId: Id<'users'>,
+  range: { startAccountingDate: number; endAccountingDate: number }
+) {
+  return ctx.db
+    .query('transactions')
+    .withIndex('by_userId_accountingDate', (q) =>
+      q
+        .eq('userId', userId)
+        .gte('accountingDate', range.startAccountingDate)
+        .lte('accountingDate', range.endAccountingDate)
+    )
+    .collect();
+}
+
 // Matches the shape the deleted API layer used to map: `id`, not `_id`, and
 // epoch-millisecond timestamps, since Convex cannot serialize a Date.
 export function toTransaction(
@@ -95,15 +123,18 @@ export function toTransaction(
   };
 }
 
+/**
+ * A user's transactions in an accounting date window, newest first.
+ *
+ * This is a subscribed query, so every write to the table re-runs it. Keep the
+ * window as narrow as the view needs.
+ */
 export const getTransactionsByUserId = query({
-  args: {},
-  handler: async (ctx) => {
+  args: accountingDateRange,
+  handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
 
-    const transactions = await ctx.db
-      .query('transactions')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .collect();
+    const transactions = await accountingDateRangeQuery(ctx, userId, args);
 
     return transactions
       .filter(isLive)
@@ -117,26 +148,14 @@ export const getTransactionsByUserId = query({
  * Used for budget actuals - filters by accountingDate only, not transaction date.
  */
 export const getTransactionsByUserIdAndAccountingDateRange = query({
-  args: {
-    startAccountingDate: v.number(),
-    endAccountingDate: v.number(),
-  },
+  args: accountingDateRange,
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
 
-    const transactions = await ctx.db
-      .query('transactions')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .collect();
+    const transactions = await accountingDateRangeQuery(ctx, userId, args);
 
     return transactions
-      .filter(
-        (t) =>
-          isLive(t) &&
-          t.isInternal !== true &&
-          t.accountingDate >= args.startAccountingDate &&
-          t.accountingDate <= args.endAccountingDate
-      )
+      .filter((t) => isLive(t) && t.isInternal !== true)
       .map(toTransaction);
   },
 });
