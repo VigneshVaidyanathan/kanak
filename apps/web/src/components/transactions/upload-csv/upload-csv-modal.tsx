@@ -38,7 +38,7 @@ export const UploadCsvModal = ({ onClose }: { onClose: () => void }) => {
     {
       icon: <IconUpload size={16} />,
       label: 'Upload file',
-      description: 'Choose a CSV file',
+      description: 'Choose a CSV or Excel file',
     },
     {
       icon: <IconWand size={16} />,
@@ -99,7 +99,7 @@ export const UploadCsvModal = ({ onClose }: { onClose: () => void }) => {
         <DialogHeader>
           <div className="flex items-center justify-between">
             <DialogTitle className="text-lg font-bold flex-1">
-              Upload CSV file
+              Upload statement file
             </DialogTitle>
             <Button
               variant="ghost"
@@ -111,10 +111,10 @@ export const UploadCsvModal = ({ onClose }: { onClose: () => void }) => {
             </Button>
           </div>
           <DialogDescription className="text-gray-400 text-sm">
-            Choose a CSV file which contains the bank statement and upload it.
-            Once the file is uploaded, we will show the columns present in the
-            file and you can map them with the properties of the transactions
-            that we track.
+            Choose a CSV or Excel file which contains the bank statement and
+            upload it. Once the file is uploaded, we will show the columns
+            present in the file and you can map them with the properties of the
+            transactions that we track.
           </DialogDescription>
         </DialogHeader>
 
