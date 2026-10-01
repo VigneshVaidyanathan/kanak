@@ -62,15 +62,12 @@ export default defineSchema({
     // Soft delete: absent or false means live. Never hard-delete transactions.
     isDeleted: v.optional(v.boolean()),
     userId: v.id('users'),
-    workspaceId: v.optional(v.id('workspaces')),
+    workspaceId: v.id('workspaces'),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index('by_userId', ['userId'])
     .index('by_date', ['date'])
     .index('by_accountingDate', ['accountingDate'])
-    .index('by_userId_accountingDate', ['userId', 'accountingDate'])
-    .index('by_userId_date', ['userId', 'date'])
     // Reads are almost always "this workspace, this date window": the
     // transactions page and budget actuals both scope by accountingDate.
     .index('by_workspaceId', ['workspaceId'])
@@ -87,11 +84,10 @@ export default defineSchema({
     priority: v.optional(v.string()), // "needs", "wants", "savings", "insurance", "liabilities"
     active: v.boolean(),
     userId: v.id('users'),
-    workspaceId: v.optional(v.id('workspaces')),
+    workspaceId: v.id('workspaces'),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index('by_userId', ['userId'])
     .index('by_active', ['active'])
     .index('by_workspaceId', ['workspaceId']),
 
@@ -103,11 +99,10 @@ export default defineSchema({
     branch: v.optional(v.string()),
     active: v.boolean(),
     userId: v.id('users'),
-    workspaceId: v.optional(v.id('workspaces')),
+    workspaceId: v.id('workspaces'),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index('by_userId', ['userId'])
     .index('by_active', ['active'])
     .index('by_workspaceId', ['workspaceId']),
 
@@ -117,18 +112,16 @@ export default defineSchema({
     action: v.any(), // TransactionRuleAction structure
     order: v.number(),
     userId: v.id('users'),
-    workspaceId: v.optional(v.id('workspaces')),
+    workspaceId: v.id('workspaces'),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index('by_userId', ['userId'])
-    .index('by_userId_order', ['userId', 'order'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_order', ['workspaceId', 'order']),
 
   budgets: defineTable({
     userId: v.id('users'),
-    workspaceId: v.optional(v.id('workspaces')),
+    workspaceId: v.id('workspaces'),
     categoryId: v.string(), // References category title
     month: v.number(), // 1-12
     year: v.number(),
@@ -138,14 +131,6 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index('by_userId', ['userId'])
-    .index('by_userId_year_month', ['userId', 'year', 'month'])
-    .index('by_userId_categoryId_year_month', [
-      'userId',
-      'categoryId',
-      'year',
-      'month',
-    ])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_year_month', ['workspaceId', 'year', 'month'])
     .index('by_workspaceId_categoryId_year_month', [
@@ -157,7 +142,7 @@ export default defineSchema({
 
   wealth_sections: defineTable({
     userId: v.id('users'),
-    workspaceId: v.optional(v.id('workspaces')),
+    workspaceId: v.id('workspaces'),
     name: v.string(),
     color: v.string(),
     operation: v.string(), // "add" or "subtract"
@@ -166,41 +151,34 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index('by_userId', ['userId'])
-    .index('by_userId_deletedAt', ['userId', 'deletedAt'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_deletedAt', ['workspaceId', 'deletedAt']),
 
   wealth_line_items: defineTable({
     sectionId: v.id('wealth_sections'),
     userId: v.id('users'),
-    workspaceId: v.optional(v.id('workspaces')),
+    workspaceId: v.id('workspaces'),
     name: v.string(),
     order: v.number(),
     deletedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index('by_userId', ['userId'])
     .index('by_sectionId', ['sectionId'])
-    .index('by_userId_deletedAt', ['userId', 'deletedAt'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_deletedAt', ['workspaceId', 'deletedAt']),
 
   wealth_entries: defineTable({
     lineItemId: v.id('wealth_line_items'),
     userId: v.id('users'),
-    workspaceId: v.optional(v.id('workspaces')),
+    workspaceId: v.id('workspaces'),
     date: v.number(),
     amount: v.number(),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index('by_userId', ['userId'])
     .index('by_lineItemId', ['lineItemId'])
     .index('by_date', ['date'])
-    .index('by_userId_date', ['userId', 'date'])
-    .index('by_userId_lineItemId_date_unique', ['userId', 'lineItemId', 'date'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_date', ['workspaceId', 'date'])
     .index('by_workspaceId_lineItemId_date_unique', [
@@ -211,7 +189,7 @@ export default defineSchema({
 
   transaction_uploads: defineTable({
     userId: v.id('users'),
-    workspaceId: v.optional(v.id('workspaces')),
+    workspaceId: v.id('workspaces'),
     storageId: v.optional(v.id('_storage')),
     fileName: v.string(),
     fileSize: v.number(),
@@ -219,16 +197,14 @@ export default defineSchema({
     uploadedAt: v.number(),
     createdAt: v.number(),
     updatedAt: v.number(),
-  })
-    .index('by_userId', ['userId'])
-    .index('by_workspaceId', ['workspaceId']),
+  }).index('by_workspaceId', ['workspaceId']),
 
   // One row per transaction changed by an update, holding the values as they
   // were just before the patch. A bulk action shares one batchId so the whole
   // action can be undone together.
   transaction_history: defineTable({
     userId: v.id('users'),
-    workspaceId: v.optional(v.id('workspaces')),
+    workspaceId: v.id('workspaces'),
     transactionId: v.id('transactions'),
     batchId: v.string(),
     source: v.string(), // "update" | "batch" | "delete"
@@ -251,7 +227,6 @@ export default defineSchema({
     changed: v.array(v.string()),
     createdAt: v.number(),
   })
-    .index('by_userId', ['userId'])
     .index('by_batchId', ['batchId'])
     .index('by_transactionId', ['transactionId'])
     .index('by_workspaceId', ['workspaceId']),
@@ -271,7 +246,7 @@ export default defineSchema({
 
   ai_chats: defineTable({
     userId: v.id('users'),
-    workspaceId: v.optional(v.id('workspaces')),
+    workspaceId: v.id('workspaces'),
     title: v.string(),
     model: v.optional(v.string()), // the model as of creation, for display
     lastMessageAt: v.number(),
@@ -279,15 +254,13 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index('by_userId', ['userId'])
-    .index('by_userId_lastMessageAt', ['userId', 'lastMessageAt'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_lastMessageAt', ['workspaceId', 'lastMessageAt']),
 
   ai_messages: defineTable({
     chatId: v.id('ai_chats'),
     userId: v.id('users'),
-    workspaceId: v.optional(v.id('workspaces')),
+    workspaceId: v.id('workspaces'),
     role: v.string(), // "user" | "assistant"
     // The part array as the chat UI holds it: text, tool-call and tool-result
     // entries, stored verbatim so a reopened chat replays its tool blocks.
@@ -296,6 +269,5 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_chatId_createdAt', ['chatId', 'createdAt'])
-    .index('by_userId', ['userId'])
     .index('by_workspaceId', ['workspaceId']),
 });

@@ -259,6 +259,11 @@ export const backfillWorkspaceIds = internalMutation({
  *   npx convex run migrations:backfillWorkspaces
  *
  * Safe to re-run: every step above is idempotent.
+ *
+ * Ordering matters on a deployment that has not run this yet: `workspaceId` is
+ * a required field now, so push the schema with it marked `v.optional` first,
+ * run this, and only then tighten it. That is the order the original rollout
+ * used; the only way back here is from a pre-migration snapshot export.
  */
 export const backfillWorkspaces = internalAction({
   args: {},
