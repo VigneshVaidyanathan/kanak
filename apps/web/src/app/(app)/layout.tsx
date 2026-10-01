@@ -13,7 +13,7 @@ import {
   IconCoin,
   IconSettings,
 } from '@tabler/icons-react';
-import { useQuery } from 'convex/react';
+import { Authenticated, useQuery } from 'convex/react';
 import { useRouter } from 'next/navigation';
 
 function AppLayoutContent({ children }: { children: React.ReactNode }) {
@@ -57,7 +57,10 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
       />
       <div className="flex-1 p-5 pb-24 bg-gray-50 flex flex-col container mx-auto">
         <UpdateBanner />
-        {children}
+        {/* Convex resolves the auth token after the first client render, so a
+            query fired before it lands throws Unauthorized and takes the page
+            down. The gate holds the subscriptions until the token exists. */}
+        <Authenticated>{children}</Authenticated>
       </div>
       <Toaster position="top-right" />
     </div>
