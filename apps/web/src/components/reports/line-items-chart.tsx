@@ -98,7 +98,14 @@ export function LineItemsChart({ data, lineItems }: LineItemsChartProps) {
             <ChartTooltip
               content={
                 <ChartTooltipContent
-                  formatter={(value: any) => formatCurrency(Number(value))}
+                  formatter={(value, name) => (
+                    <>
+                      <span className="text-muted-foreground">{name}</span>
+                      <span className="text-foreground font-mono font-medium tabular-nums ml-auto">
+                        {formatCurrency(Number(value))}
+                      </span>
+                    </>
+                  )}
                 />
               }
             />

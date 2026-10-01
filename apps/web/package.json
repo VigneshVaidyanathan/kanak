@@ -42,7 +42,9 @@
     "react-dropzone": "^14.3.8",
     "react-hook-form": "^7.76.1",
     "recharts": "^2.12.7",
+    "streamdown": "^2.6.0",
     "tailwind-merge": "^3.4.0",
+    "use-stick-to-bottom": "^1.1.6",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^3.25.76",
     "zustand": "^5.0.1"

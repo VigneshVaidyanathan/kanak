@@ -10,6 +10,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@kanak/ui';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
+import type { CreateTransactionInput } from '@kanak/shared';
 import {
   IconArrowsShuffle,
   IconCheck,
@@ -18,6 +20,8 @@ import {
   IconWand,
   IconX,
 } from '@tabler/icons-react';
+import { useState } from 'react';
+import { ApplyRulesStep } from './apply-rules-step';
 import { CleanCsv } from './clean-csv';
 import { ColumnMapping } from './column-mapping';
 import { UploadFile } from './upload-file';
@@ -55,6 +59,11 @@ export const UploadCsvModal = ({ onClose }: { onClose: () => void }) => {
       label: 'Verify transactions',
       description: 'Verify and add transactions',
     },
+    {
+      icon: <IconWand size={16} />,
+      label: 'Apply rules',
+      description: 'Categorise what was imported',
+    },
   ];
 
   const handleStepClick = (step: number) => {
@@ -78,6 +87,19 @@ export const UploadCsvModal = ({ onClose }: { onClose: () => void }) => {
   const handleMappingComplete = (transactions: any[]) => {
     setTransactions(transactions);
     setActiveStep(3);
+  };
+
+  const [imported, setImported] = useState<{
+    ids: Id<'transactions'>[];
+    rows: CreateTransactionInput[];
+  } | null>(null);
+
+  const handleImported = (
+    ids: Id<'transactions'>[],
+    rows: CreateTransactionInput[]
+  ) => {
+    setImported({ ids, rows });
+    setActiveStep(4);
   };
 
   const handleVerifyComplete = () => {
@@ -153,6 +175,14 @@ export const UploadCsvModal = ({ onClose }: { onClose: () => void }) => {
                 transactions={transactions}
                 onBack={() => setActiveStep(2)}
                 onComplete={handleVerifyComplete}
+                onImported={handleImported}
+              />
+            )}
+            {activeStep === 4 && imported && (
+              <ApplyRulesStep
+                transactionIds={imported.ids}
+                rows={imported.rows}
+                onFinish={handleVerifyComplete}
               />
             )}
           </div>

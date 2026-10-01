@@ -58,8 +58,14 @@ export interface DataTableProps<TData, TArgs extends any[]> {
   onPaginationChange?: (pagination: PaginationState) => void;
   initialColumnFilters?: TanStackColumnFilter[];
   onColumnFiltersChange?: (filters: TanStackColumnFilter[]) => void;
+  initialSearch?: string;
+  onSearchChange?: (search: string) => void;
+  initialSorting?: SortingState;
+  onSortingChange?: (sorting: SortingState) => void;
   enableRowSelection?: boolean;
   onSelectionChange?: (selectedRows: TData[]) => void;
+  /** Bump this to clear the current row selection from outside the table. */
+  clearSelectionSignal?: number;
   onFilteredRowsChange?: (filteredRows: TData[]) => void;
   emptyState?: React.ReactNode;
   contextMenuActions?: ContextMenuActions<TData>;
@@ -88,8 +94,13 @@ export function DataTable<TData, TArgs extends any[]>({
   onPaginationChange,
   initialColumnFilters,
   onColumnFiltersChange,
+  initialSearch,
+  onSearchChange,
+  initialSorting,
+  onSortingChange,
   enableRowSelection = false,
   onSelectionChange,
+  clearSelectionSignal,
   onFilteredRowsChange,
   emptyState,
   contextMenuActions,
@@ -99,11 +110,11 @@ export function DataTable<TData, TArgs extends any[]>({
   onRowDoubleClick,
 }: DataTableProps<TData, TArgs>) {
   const [data, setData] = useState(initialData ?? []);
-  const [globalSearch, setGlobalSearch] = useState('');
+  const [globalSearch, setGlobalSearch] = useState(initialSearch ?? '');
   const [columnFilters, setColumnFilters] = useState<TanStackColumnFilter[]>(
     initialColumnFilters ?? []
   );
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [sorting, setSorting] = useState<SortingState>(initialSorting ?? []);
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
   const [paginationState, setPaginationState] = useState<PaginationState>(
     initialPagination ?? {
@@ -143,6 +154,28 @@ export function DataTable<TData, TArgs extends any[]>({
       }
     }
   }, [initialColumnFilters]);
+
+  useEffect(() => {
+    if (clearSelectionSignal !== undefined) setRowSelection({});
+  }, [clearSelectionSignal]);
+
+  // Sync search from the parent (URL) when it changes there.
+  useEffect(() => {
+    if (initialSearch !== undefined && initialSearch !== globalSearch) {
+      setGlobalSearch(initialSearch);
+    }
+    // Same one-way shape as the filter/pagination syncs above.
+  }, [initialSearch]);
+
+  // Sync sorting from the parent (URL) when it changes there.
+  useEffect(() => {
+    if (
+      initialSorting &&
+      JSON.stringify(initialSorting) !== JSON.stringify(sorting)
+    ) {
+      setSorting(initialSorting);
+    }
+  }, [initialSorting]);
 
   // Transform filters and sorting for server-side mode
   const serverParams = useMemo(() => {
@@ -327,7 +360,14 @@ export function DataTable<TData, TArgs extends any[]>({
     },
     enableRowSelection: enableRowSelection,
     enableGlobalFilter: true,
-    onGlobalFilterChange: setGlobalSearch,
+    onGlobalFilterChange: (updater: unknown) => {
+      const next =
+        typeof updater === 'function'
+          ? (updater as (old: string) => string)(globalSearch)
+          : (updater as string);
+      setGlobalSearch(next);
+      onSearchChange?.(next);
+    },
     globalFilterFn: 'includesString',
     onColumnFiltersChange: (updater) => {
       const newFilters =
@@ -335,7 +375,11 @@ export function DataTable<TData, TArgs extends any[]>({
       setColumnFilters(newFilters);
       onColumnFiltersChange?.(newFilters);
     },
-    onSortingChange: setSorting,
+    onSortingChange: (updater) => {
+      const next = typeof updater === 'function' ? updater(sorting) : updater;
+      setSorting(next);
+      onSortingChange?.(next);
+    },
     onPaginationChange: (updater) => {
       // Resolve outside the state updater: updaters run during render, and the
       // parent callback navigates (setState on Router).
@@ -420,12 +464,16 @@ export function DataTable<TData, TArgs extends any[]>({
             value={globalSearch}
             onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
               setGlobalSearch(event.target.value);
+              onSearchChange?.(event.target.value);
             }}
           />
           {globalSearch && (
             <button
               type="button"
-              onClick={() => setGlobalSearch('')}
+              onClick={() => {
+                setGlobalSearch('');
+                onSearchChange?.('');
+              }}
               className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
               aria-label="Clear search"
             >

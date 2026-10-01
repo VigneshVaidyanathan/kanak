@@ -333,7 +333,8 @@ export const upsertTransactionsBatch = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
 
-    if (args.transactions.length === 0) return { created: 0, updated: 0 };
+    if (args.transactions.length === 0)
+      return { created: 0, updated: 0, ids: [] as Id<'transactions'>[] };
 
     // A duplicate shares its `date` with the input it matches, so every row
     // that could match this chunk lies inside the chunk's own date span. One
@@ -363,6 +364,8 @@ export const upsertTransactionsBatch = mutation({
         ])
     );
     const now = Date.now();
+    // Touched rows, in input order, so the importer can apply rules to them.
+    const ids: Id<'transactions'>[] = [];
     let created = 0;
     let updated = 0;
 
@@ -380,6 +383,7 @@ export const upsertTransactionsBatch = mutation({
           updatedAt: now,
         });
         byKey.set(key, { id: match.id, accountingDate });
+        ids.push(match.id);
         updated++;
         continue;
       }
@@ -394,12 +398,14 @@ export const upsertTransactionsBatch = mutation({
       });
       // Later rows in the same batch dedupe against this one too.
       byKey.set(key, { id, accountingDate });
+      ids.push(id);
       created++;
     }
 
-    // Counts only: the caller tallies created vs updated, and returning a
-    // document per row made a 500-row chunk read and ship 500 rows it drops.
-    return { created, updated };
+    // Counts plus ids: the caller tallies created vs updated and then applies
+    // rules to the rows it just imported. Returning whole documents instead
+    // made a 500-row chunk ship 500 rows it drops.
+    return { created, updated, ids };
   },
 });
 
@@ -414,6 +420,7 @@ export const updateTransactionsBatch = mutation({
         id: v.id('transactions'),
         notes: v.optional(v.string()),
         category: v.optional(v.string()),
+        bankAccount: v.optional(v.string()),
         isInternal: v.optional(v.boolean()),
       })
     ),
@@ -531,8 +538,10 @@ export const applyRules = mutation({
     }
 
     const now = Date.now();
-    const ruleBreakdown: Record<string, { ruleTitle: string; count: number }> =
-      {};
+    const ruleBreakdown: Record<
+      string,
+      { ruleTitle: string; count: number; transactionIds: string[] }
+    > = {};
     let updated = 0;
     let skipped = 0;
 
@@ -553,8 +562,11 @@ export const applyRules = mutation({
       const breakdown = (ruleBreakdown[rule._id] ??= {
         ruleTitle: rule.title,
         count: 0,
+        transactionIds: [],
       });
       breakdown.count++;
+      // ponytail: ids only; the preview UI already holds the rows it selected.
+      if (args.preview) breakdown.transactionIds.push(transaction._id);
       updated++;
 
       if (args.preview) {

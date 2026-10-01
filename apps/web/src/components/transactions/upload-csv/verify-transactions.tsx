@@ -10,7 +10,11 @@ import {
   useCsvUploadStore,
 } from '@/store/csv-upload-store';
 import { DataTable, DataTableColumnHeader } from '@kanak/components';
-import { bulkTransactionsSchema, createTransactionSchema } from '@kanak/shared';
+import {
+  bulkTransactionsSchema,
+  type CreateTransactionInput,
+  createTransactionSchema,
+} from '@kanak/shared';
 import { Badge, Button, Spinner } from '@kanak/ui';
 import {
   IconArrowLeft,
@@ -19,6 +23,7 @@ import {
   IconCurrencyRupee,
 } from '@tabler/icons-react';
 import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import { ColumnDef } from '@tanstack/react-table';
 import { useMutation } from 'convex/react';
 import { useMemo, useState } from 'react';
@@ -27,14 +32,24 @@ export const VerifyTransactions = ({
   transactions,
   onBack,
   onComplete,
+  onImported,
 }: {
   transactions: SampleTransaction[];
   onBack: () => void;
   onComplete: () => void;
+  /** Hands the imported rows to the apply-rules step. */
+  onImported: (
+    ids: Id<'transactions'>[],
+    rows: CreateTransactionInput[]
+  ) => void;
 }) => {
   const [isAdded, setIsAdded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [transactionsAdded, setTransactionsAdded] = useState(0);
+  const [imported, setImported] = useState<{
+    ids: Id<'transactions'>[];
+    rows: CreateTransactionInput[];
+  } | null>(null);
   const upsertTransactionsBatch = useMutation(
     api.transactions.upsertTransactionsBatch
   );
@@ -205,10 +220,11 @@ export const VerifyTransactions = ({
         validatedTransactions
       );
 
-      const { created, total } = await upsertTransactionsChunked(
+      const { created, total, ids } = await upsertTransactionsChunked(
         upsertTransactionsBatch,
         bulkValidatedTransactions
       );
+      setImported({ ids, rows: bulkValidatedTransactions });
       const addedCount = created || total || transactions.length;
       setTransactionsAdded(addedCount);
 
@@ -342,11 +358,15 @@ export const VerifyTransactions = ({
           <Button
             size="sm"
             variant="default"
-            onClick={async () => {
+            onClick={() => {
+              if (imported && imported.ids.length > 0) {
+                onImported(imported.ids, imported.rows);
+                return;
+              }
               onComplete();
             }}
           >
-            Close
+            {imported && imported.ids.length > 0 ? 'Apply rules' : 'Close'}
             <IconArrowRight size={16} />
           </Button>
         )}

@@ -195,4 +195,39 @@ export default defineSchema({
     .index('by_userId', ['userId'])
     .index('by_batchId', ['batchId'])
     .index('by_transactionId', ['transactionId']),
+
+  // App preferences. Deliberately not fields on `users`: that table is Convex
+  // Auth's, inlined here with its own constraints, and preferences can grow
+  // without anyone having to think about auth.
+  user_settings: defineTable({
+    userId: v.id('users'),
+    aiModel: v.optional(v.string()), // OpenRouter model id, e.g. "anthropic/claude-sonnet-5.5"
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_userId', ['userId']),
+
+  ai_chats: defineTable({
+    userId: v.id('users'),
+    title: v.string(),
+    model: v.optional(v.string()), // the model as of creation, for display
+    lastMessageAt: v.number(),
+    deletedAt: v.optional(v.number()), // soft delete, as wealth_sections does
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_userId_lastMessageAt', ['userId', 'lastMessageAt']),
+
+  ai_messages: defineTable({
+    chatId: v.id('ai_chats'),
+    userId: v.id('users'),
+    role: v.string(), // "user" | "assistant"
+    // The part array as the chat UI holds it: text, tool-call and tool-result
+    // entries, stored verbatim so a reopened chat replays its tool blocks.
+    // Same call as transaction_rules.filter.
+    parts: v.any(),
+    createdAt: v.number(),
+  })
+    .index('by_chatId_createdAt', ['chatId', 'createdAt'])
+    .index('by_userId', ['userId']),
 });

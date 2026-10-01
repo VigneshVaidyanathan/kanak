@@ -65,7 +65,7 @@ export function ExpenseListChart({ data }: ExpenseListChartProps) {
       <CardHeader>
         <CardTitle>Expense Breakdown by Category</CardTitle>
         <CardDescription>
-          List of expenses sorted by amount (highest to lowest)
+          Actual spend by category, highest first
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -73,7 +73,22 @@ export function ExpenseListChart({ data }: ExpenseListChartProps) {
           <PieChart>
             <ChartTooltip
               cursor={false}
-              content={<ChartTooltipContent hideLabel />}
+              content={
+                <ChartTooltipContent
+                  hideLabel
+                  formatter={(value, name) => (
+                    <>
+                      <span className="text-muted-foreground">{name}</span>
+                      <span className="text-foreground font-mono font-medium tabular-nums ml-auto">
+                        {formatCurrency(Number(value))}
+                      </span>
+                      <span className="text-muted-foreground font-mono tabular-nums">
+                        {((Number(value) / total) * 100).toFixed(1)}%
+                      </span>
+                    </>
+                  )}
+                />
+              }
             />
             <Pie
               data={data}

@@ -12,6 +12,7 @@ import {
   IconChartBar,
   IconCoin,
   IconSettings,
+  IconCalendar,
 } from '@tabler/icons-react';
 import { Authenticated, useQuery } from 'convex/react';
 import { useRouter } from 'next/navigation';
@@ -43,6 +44,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         navigationLinks={[
           { href: '/', label: 'Dashboard', icon: IconLayoutDashboard },
           { href: '/transactions', label: 'Transactions', icon: IconReceipt },
+          { href: '/calendar', label: 'Calendar', icon: IconCalendar },
           { href: '/budget', label: 'Budget', icon: IconChartBar },
           { href: '/reports', label: 'Reports', icon: IconChartBar },
           { href: '/wealth', label: 'Wealth', icon: IconCoin },

@@ -88,7 +88,19 @@ export function IncomeExpenseSavingsChart({
           <PieChart>
             <ChartTooltip
               cursor={false}
-              content={<ChartTooltipContent hideLabel />}
+              content={
+                <ChartTooltipContent
+                  hideLabel
+                  formatter={(value, name) => (
+                    <>
+                      <span className="text-muted-foreground">{name}</span>
+                      <span className="text-foreground font-mono font-medium tabular-nums ml-auto">
+                        {formatCurrency(Number(value))}
+                      </span>
+                    </>
+                  )}
+                />
+              }
             />
             <Pie
               data={data}

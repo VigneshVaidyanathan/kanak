@@ -57,11 +57,16 @@ import {
 import {
   ColumnDef,
   PaginationState,
+  SortingState,
   ColumnFilter as TanStackColumnFilter,
 } from '@tanstack/react-table';
-import { useConvex, useQuery } from 'convex/react';
+import { useConvex, useMutation, useQuery } from 'convex/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  BulkActionsBar,
+  type BulkEdits,
+} from '@/components/transactions/bulk-actions-bar';
 import {
   DateRangeFilter,
   getPresetRange,
@@ -238,6 +243,76 @@ export default function TransactionsPage() {
     return filters;
   }, [searchParams]);
 
+  // Initialize global search from URL
+  const initialSearch = useMemo(
+    () => searchParams.get('q') ?? '',
+    [searchParams]
+  );
+
+  // Initialize sorting from URL (format: id:asc|desc)
+  const initialSorting = useMemo<SortingState>(() => {
+    const sortParam = searchParams.get('sort');
+    if (!sortParam) return [];
+    return sortParam
+      .split(',')
+      .map((part) => {
+        const [id, dir] = part.split(':');
+        return id ? { id, desc: dir === 'desc' } : null;
+      })
+      .filter((s): s is { id: string; desc: boolean } => s !== null);
+  }, [searchParams]);
+
+  // One shared writer: every filter/sort/search change funnels through it.
+  const setParams = useCallback(
+    (mutate: (params: URLSearchParams) => void) => {
+      const params = new URLSearchParams(searchParams.toString());
+      mutate(params);
+      const newUrl = params.toString()
+        ? `/transactions?${params.toString()}`
+        : '/transactions';
+      router.replace(newUrl, { scroll: false });
+    },
+    [router, searchParams]
+  );
+
+  // ponytail: debounced so typing writes one history entry, not one per key
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleSearchChange = useCallback(
+    (search: string) => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+      searchTimer.current = setTimeout(() => {
+        setParams((params) => {
+          if (search) params.set('q', search);
+          else params.delete('q');
+          params.delete('page');
+        });
+      }, 300);
+    },
+    [setParams]
+  );
+  useEffect(
+    () => () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    },
+    []
+  );
+
+  const handleSortingChange = useCallback(
+    (sorting: SortingState) => {
+      setParams((params) => {
+        if (sorting.length === 0) {
+          params.delete('sort');
+        } else {
+          params.set(
+            'sort',
+            sorting.map((s) => `${s.id}:${s.desc ? 'desc' : 'asc'}`).join(',')
+          );
+        }
+      });
+    },
+    [setParams]
+  );
+
   // Handle column filters changes and update URL
   const handleColumnFiltersChange = useCallback(
     (filters: TanStackColumnFilter[]) => {
@@ -349,7 +424,7 @@ export default function TransactionsPage() {
 
   // Handle date range filter change
   const handleDateRangeChange = useCallback(
-    (range: TransactionDateRange) => {
+    (range: TransactionDateRange, replace = false) => {
       const key = (d: Date) =>
         `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
           d.getDate()
@@ -357,10 +432,18 @@ export default function TransactionsPage() {
       const params = new URLSearchParams(searchParams.toString());
       params.set('from', key(range.from));
       params.set('to', key(range.to));
-      router.push(`/transactions?${params.toString()}`, { scroll: false });
+      const nav = replace ? router.replace : router.push;
+      nav(`/transactions?${params.toString()}`, { scroll: false });
     },
     [router, searchParams]
   );
+
+  // Landing with no ?from/?to falls back to this month. Write it into the URL
+  // so the active range is explicit and the link is shareable.
+  useEffect(() => {
+    if (searchParams.get('from') && searchParams.get('to')) return;
+    handleDateRangeChange(dateRange, true);
+  }, [searchParams, dateRange, handleDateRangeChange]);
 
   // Handle month navigation
   const handleMonthNavigation = useCallback(
@@ -405,7 +488,48 @@ export default function TransactionsPage() {
 
   const handleDeleteSuccess = useCallback(() => {
     setSelectedTransactions([]);
+    setClearSelectionSignal((n) => n + 1);
   }, []);
+
+  const updateTransactionsBatch = useMutation(
+    api.transactions.updateTransactionsBatch
+  );
+  const [clearSelectionSignal, setClearSelectionSignal] = useState(0);
+  const [isApplyingBulkEdits, setIsApplyingBulkEdits] = useState(false);
+
+  const clearSelection = useCallback(() => {
+    setSelectedTransactions([]);
+    setClearSelectionSignal((n) => n + 1);
+  }, []);
+
+  const handleBulkApply = useCallback(
+    async (edits: BulkEdits) => {
+      setIsApplyingBulkEdits(true);
+      try {
+        const result = await updateTransactionsBatch({
+          updates: selectedTransactions.map((t) => ({
+            id: t.id as Id<'transactions'>,
+            ...edits,
+          })),
+        });
+        if (result.failed.length > 0) {
+          toast.warning(
+            `Updated ${result.updated.length}, ${result.failed.length} failed`
+          );
+        } else {
+          toast.success(`Updated ${result.updated.length} transactions`);
+        }
+        clearSelection();
+      } catch (error: unknown) {
+        const err = error as { message?: string };
+        console.error('Error applying bulk edits:', error);
+        toast.error(err.message || 'Failed to update transactions');
+      } finally {
+        setIsApplyingBulkEdits(false);
+      }
+    },
+    [selectedTransactions, updateTransactionsBatch, clearSelection]
+  );
 
   const handleEditTransaction = useCallback((transaction: Transaction) => {
     setSelectedTransactionForEdit(transaction);
@@ -1273,9 +1397,14 @@ export default function TransactionsPage() {
         }
         initialColumnFilters={initialColumnFilters}
         onColumnFiltersChange={handleColumnFiltersChange}
+        initialSearch={initialSearch}
+        onSearchChange={handleSearchChange}
+        initialSorting={initialSorting}
+        onSortingChange={handleSortingChange}
         showRefresh={false}
         enableRowSelection={true}
         onSelectionChange={setSelectedTransactions}
+        clearSelectionSignal={clearSelectionSignal}
         onFilteredRowsChange={setFilteredTransactions}
         onRowDoubleClick={handleEditTransaction}
         customSection={
@@ -1290,7 +1419,12 @@ export default function TransactionsPage() {
               <DropdownMenuLabel>Transaction Actions</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
-                <DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setSelectedTransactionForEdit(null);
+                    setEditModalOpen(true);
+                  }}
+                >
                   <IconPlus className="h-4 w-4" />
                   Add transaction
                 </DropdownMenuItem>
@@ -1334,6 +1468,16 @@ export default function TransactionsPage() {
         }}
         summarySection={summarySection}
         footerRow={footerRow}
+      />
+
+      <BulkActionsBar
+        selected={selectedTransactions}
+        categories={categories}
+        bankAccounts={bankAccounts}
+        isApplying={isApplyingBulkEdits}
+        onApply={handleBulkApply}
+        onApplyRules={() => setApplyRulesModalOpen(true)}
+        onClear={clearSelection}
       />
 
       {uploadModalOpen && (

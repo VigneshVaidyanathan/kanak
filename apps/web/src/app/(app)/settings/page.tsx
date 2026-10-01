@@ -1,5 +1,6 @@
 'use client';
 
+import { AiSettingsSection } from '@/components/ai';
 import { CategoriesSection } from '@/components/categories';
 import { TransactionRulesSection } from '@/components/transactions/rules/transaction-rules-section';
 import { NotReadyForMobile } from '@kanak/components';
@@ -8,6 +9,7 @@ import {
   IconBuildingBank,
   IconCategory,
   IconFilter,
+  IconSparkles,
   IconUpload,
 } from '@tabler/icons-react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -31,6 +33,7 @@ export default function SettingsPage() {
         'bank-accounts',
         'transaction-rules',
         'transaction-uploads',
+        'ai',
       ].includes(tabParam)
     ) {
       setActiveTab(tabParam);
@@ -98,6 +101,13 @@ export default function SettingsPage() {
                 <IconUpload className="shrink-0 size-4" />
                 Transaction uploads
               </TabsTrigger>
+              <TabsTrigger
+                value="ai"
+                className="cursor-pointer w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm py-2"
+              >
+                <IconSparkles className="shrink-0 size-4" />
+                AI
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -114,6 +124,9 @@ export default function SettingsPage() {
             </TabsContent>
             <TabsContent value="transaction-uploads" className="mt-0">
               <TransactionUploadsSection />
+            </TabsContent>
+            <TabsContent value="ai" className="mt-0">
+              <AiSettingsSection />
             </TabsContent>
           </div>
         </Tabs>

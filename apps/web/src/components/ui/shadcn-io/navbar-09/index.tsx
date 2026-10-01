@@ -19,6 +19,7 @@ import {
   cn,
 } from '@kanak/ui';
 import {
+  IconCalendar,
   IconChartBar,
   IconCoins,
   IconLayoutDashboard,
@@ -260,6 +261,11 @@ const getDockItems = (isActive: (href: string) => boolean): DockNavItem[] => [
     title: 'Transactions',
     href: '/transactions',
     icon: IconReceipt,
+  },
+  {
+    title: 'Calendar',
+    href: '/calendar',
+    icon: IconCalendar,
   },
   {
     title: 'Budget',

@@ -21,9 +21,14 @@ import { useCallback, useMemo } from 'react';
 
 interface MonthNavigationProps {
   onMonthChange?: (month: string) => void;
+  /** Where the `?month=` param gets pushed. Defaults to the budget page. */
+  basePath?: string;
 }
 
-export function MonthNavigation({ onMonthChange }: MonthNavigationProps) {
+export function MonthNavigation({
+  onMonthChange,
+  basePath = '/budget',
+}: MonthNavigationProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -77,11 +82,11 @@ export function MonthNavigation({ onMonthChange }: MonthNavigationProps) {
       const newMonthStr = `${newYear}-${String(newMonth).padStart(2, '0')}`;
       const params = new URLSearchParams(searchParams.toString());
       params.set('month', newMonthStr);
-      const newUrl = `/budget?${params.toString()}`;
+      const newUrl = `${basePath}?${params.toString()}`;
       router.push(newUrl, { scroll: false });
       onMonthChange?.(newMonthStr);
     },
-    [router, searchParams, year, month, onMonthChange]
+    [router, searchParams, year, month, onMonthChange, basePath]
   );
 
   // Handle month/year selection from dropdowns
@@ -90,11 +95,11 @@ export function MonthNavigation({ onMonthChange }: MonthNavigationProps) {
       const newMonthStr = `${newYear}-${String(newMonth).padStart(2, '0')}`;
       const params = new URLSearchParams(searchParams.toString());
       params.set('month', newMonthStr);
-      const newUrl = `/budget?${params.toString()}`;
+      const newUrl = `${basePath}?${params.toString()}`;
       router.push(newUrl, { scroll: false });
       onMonthChange?.(newMonthStr);
     },
-    [router, searchParams, onMonthChange]
+    [router, searchParams, onMonthChange, basePath]
   );
 
   // Generate month options

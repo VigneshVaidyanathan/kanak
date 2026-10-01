@@ -14,7 +14,8 @@ import {
   Spinner,
 } from '@kanak/ui';
 import { useMutation } from 'convex/react';
-import { useState } from 'react';
+import { type PreviewResult, RulesPreview } from './rules-preview';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 interface ApplyRulesModalProps {
@@ -24,12 +25,6 @@ interface ApplyRulesModalProps {
   onSuccess?: () => void;
 }
 
-interface PreviewResult {
-  updated: number;
-  skipped: number;
-  ruleBreakdown: Array<{ ruleTitle: string; count: number }>;
-}
-
 export function ApplyRulesModal({
   open,
   onOpenChange,
@@ -37,6 +32,10 @@ export function ApplyRulesModal({
   onSuccess,
 }: ApplyRulesModalProps) {
   const applyRules = useMutation(api.transactions.applyRules);
+  const transactionsById = useMemo(
+    () => new Map(selectedTransactions.map((t) => [t.id, t])),
+    [selectedTransactions]
+  );
   const [loading, setLoading] = useState(false);
   const [checkingRules, setCheckingRules] = useState(false);
   const [previewResult, setPreviewResult] = useState<PreviewResult | null>(
@@ -117,7 +116,7 @@ export function ApplyRulesModal({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="w-full max-w-2xl overflow-hidden">
         <DialogHeader>
           <DialogTitle>Apply Rules to Transactions</DialogTitle>
           <DialogDescription>
@@ -151,45 +150,10 @@ export function ApplyRulesModal({
         )}
 
         {step === 'preview' && previewResult && (
-          <div className="py-4 space-y-4">
-            {previewResult.ruleBreakdown.length > 0 ? (
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold">Rules to be applied:</h4>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {previewResult.ruleBreakdown.map((rule, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between p-3 rounded-md border bg-muted/50"
-                    >
-                      <span className="text-sm font-medium">
-                        {rule.ruleTitle}
-                      </span>
-                      <span className="text-sm text-muted-foreground">
-                        {rule.count} transaction{rule.count !== 1 ? 's' : ''}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="p-3 rounded-md border bg-muted/50 text-sm text-muted-foreground">
-                No rules matched any of the selected transactions.
-              </div>
-            )}
-
-            <div className="flex items-center justify-between pt-3 border-t">
-              <div className="space-y-1">
-                <div className="text-sm font-medium">
-                  Total transactions to be updated:{' '}
-                  <span className="text-primary">{previewResult.updated}</span>
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  Total transactions skipped:{' '}
-                  <span>{previewResult.skipped}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <RulesPreview
+            result={previewResult}
+            lookup={(id) => transactionsById.get(id)}
+          />
         )}
 
         {step === 'applying' && (

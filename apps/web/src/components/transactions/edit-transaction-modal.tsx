@@ -14,6 +14,7 @@ import {
   Category,
   Transaction,
   UpdateTransactionInput,
+  createTransactionSchema,
   updateTransactionSchema,
 } from '@kanak/shared';
 import {
@@ -62,6 +63,9 @@ export function EditTransactionModal({
   onSuccess,
 }: EditTransactionModalProps) {
   const updateTransaction = useMutation(api.transactions.updateTransaction);
+  const createTransaction = useMutation(api.transactions.createTransaction);
+  // ponytail: null transaction means "create", same form either way.
+  const isCreate = !transaction;
 
   const form = useForm<TransactionFormData>({
     defaultValues: {
@@ -105,8 +109,8 @@ export function EditTransactionModal({
         notes: transaction.notes || undefined,
         isInternal: transaction.isInternal || false,
       });
-    } else if (!open) {
-      // Reset form when modal closes
+    } else {
+      // Blank form on close, and on open in create mode.
       form.reset({
         date: undefined,
         accountingDate: undefined,
@@ -122,11 +126,23 @@ export function EditTransactionModal({
   }, [transaction, open, form]);
 
   const onSubmit = async (data: TransactionFormData) => {
-    if (!transaction) {
-      return;
-    }
-
     try {
+      if (isCreate) {
+        const { date, accountingDate, ...rest } =
+          createTransactionSchema.parse(data);
+        await createTransaction({
+          ...rest,
+          date: new Date(date).getTime(),
+          accountingDate: accountingDate
+            ? new Date(accountingDate).getTime()
+            : undefined,
+        });
+        toast.success('Transaction created successfully');
+        onSuccess();
+        onOpenChange(false);
+        return;
+      }
+
       // Validate with zod schema
       const validatedData = updateTransactionSchema.parse(data);
 
@@ -144,7 +160,7 @@ export function EditTransactionModal({
       onSuccess();
       onOpenChange(false);
     } catch (error: any) {
-      console.error('Error updating transaction:', error);
+      console.error('Error saving transaction:', error);
       if (error.errors) {
         // Zod validation errors
         const errorMessages = error.errors
@@ -152,19 +168,15 @@ export function EditTransactionModal({
           .join(', ');
         toast.error(`Validation error: ${errorMessages}`);
       } else {
-        toast.error(error.message || 'Failed to update transaction');
+        toast.error(error.message || 'Failed to save transaction');
       }
     }
   };
 
-  if (!transaction) {
-    return null;
-  }
-
-  const createdAt = transaction.createdAt
+  const createdAt = transaction?.createdAt
     ? format(new Date(transaction.createdAt), 'PPpp')
     : 'N/A';
-  const updatedAt = transaction.updatedAt
+  const updatedAt = transaction?.updatedAt
     ? format(new Date(transaction.updatedAt), 'PPpp')
     : 'N/A';
 
@@ -177,7 +189,7 @@ export function EditTransactionModal({
         <DialogHeader>
           <div className="flex items-center justify-between">
             <DialogTitle className="text-lg font-bold">
-              Edit Transaction
+              {isCreate ? 'Add Transaction' : 'Edit Transaction'}
             </DialogTitle>
             <Button
               variant="ghost"
@@ -189,7 +201,9 @@ export function EditTransactionModal({
             </Button>
           </div>
           <DialogDescription>
-            Update the transaction details below. All fields are editable.
+            {isCreate
+              ? 'Enter the transaction details below.'
+              : 'Update the transaction details below. All fields are editable.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -298,18 +312,20 @@ export function EditTransactionModal({
               description="When enabled, this transaction will be excluded from reports and calculations"
             />
 
-            <div className="border-t pt-4 space-y-2">
-              <div className="text-sm text-muted-foreground">
-                <div className="flex justify-between">
-                  <span>Created:</span>
-                  <span className="font-medium">{createdAt}</span>
-                </div>
-                <div className="flex justify-between mt-1">
-                  <span>Last Updated:</span>
-                  <span className="font-medium">{updatedAt}</span>
+            {!isCreate && (
+              <div className="border-t pt-4 space-y-2">
+                <div className="text-sm text-muted-foreground">
+                  <div className="flex justify-between">
+                    <span>Created:</span>
+                    <span className="font-medium">{createdAt}</span>
+                  </div>
+                  <div className="flex justify-between mt-1">
+                    <span>Last Updated:</span>
+                    <span className="font-medium">{updatedAt}</span>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             <DialogFooter>
               <Button
@@ -324,8 +340,10 @@ export function EditTransactionModal({
                 {form.formState.isSubmitting ? (
                   <>
                     <Spinner className="mr-2" />
-                    Updating...
+                    {isCreate ? 'Creating...' : 'Updating...'}
                   </>
+                ) : isCreate ? (
+                  'Create Transaction'
                 ) : (
                   'Update Transaction'
                 )}

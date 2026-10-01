@@ -23,9 +23,15 @@ type UploadUrlMutation = ReactMutation<
 export async function upsertTransactionsChunked(
   upsert: UpsertMutation,
   inputs: CreateTransactionInput[]
-): Promise<{ created: number; updated: number; total: number }> {
+): Promise<{
+  created: number;
+  updated: number;
+  total: number;
+  ids: Id<'transactions'>[];
+}> {
   let created = 0;
   let updated = 0;
+  const ids: Id<'transactions'>[] = [];
 
   for (let i = 0; i < inputs.length; i += UPSERT_CHUNK_SIZE) {
     const chunk = inputs.slice(i, i + UPSERT_CHUNK_SIZE).map((input) => ({
@@ -44,9 +50,10 @@ export async function upsertTransactionsChunked(
     const batch = await upsert({ transactions: chunk });
     created += batch.created;
     updated += batch.updated;
+    ids.push(...batch.ids);
   }
 
-  return { created, updated, total: inputs.length };
+  return { created, updated, total: inputs.length, ids };
 }
 
 /**

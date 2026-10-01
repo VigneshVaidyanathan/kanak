@@ -102,35 +102,31 @@ export function BudgetStats({
           <CardTitle className="text-3xl tabular-nums @[250px]/card:text-3xl font-mono">
             {formatCurrency(totalIncome)}
           </CardTitle>
-          <CardAction>
-            <Badge variant="outline" className="flex items-center gap-1">
-              {isLoading ? (
-                'Loading...'
-              ) : incomeChange !== null ? (
-                <>
-                  {incomeChange >= 0 ? (
-                    <IconTrendingUp className="size-3" />
-                  ) : (
-                    <IconTrendingDown className="size-3" />
-                  )}
-                  {Math.abs(incomeChange).toFixed(1)}%
-                </>
-              ) : (
-                'Budgeted for this month'
-              )}
-            </Badge>
-          </CardAction>
+          {!isLoading && incomeChange !== null && (
+            <CardAction>
+              <Badge variant="outline" className="flex items-center gap-1">
+                {incomeChange >= 0 ? (
+                  <IconTrendingUp className="size-3" />
+                ) : (
+                  <IconTrendingDown className="size-3" />
+                )}
+                {Math.abs(incomeChange).toFixed(1)}%
+              </Badge>
+            </CardAction>
+          )}
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
+            {/* Both sides are planned figures, so this is the slice of the plan
+                not yet assigned to a category — not cash in hand. */}
             {remaining >= 0 ? (
               <>
-                {formatCurrency(remaining)} remaining{' '}
+                {formatCurrency(remaining)} unallocated{' '}
                 <IconTrendingUp className="size-4" />
               </>
             ) : (
               <>
-                {formatCurrency(Math.abs(remaining))} over budget{' '}
+                {formatCurrency(Math.abs(remaining))} over-allocated{' '}
                 <IconTrendingUp className="size-4 rotate-180" />
               </>
             )}
@@ -148,24 +144,18 @@ export function BudgetStats({
           <CardTitle className="text-3xl tabular-nums @[250px]/card:text-3xl font-mono">
             {formatCurrency(totalBudgetedExpense)}
           </CardTitle>
-          <CardAction>
-            <Badge variant="outline" className="flex items-center gap-1">
-              {isLoading ? (
-                'Loading...'
-              ) : expenseChange !== null ? (
-                <>
-                  {expenseChange >= 0 ? (
-                    <IconTrendingUp className="size-3" />
-                  ) : (
-                    <IconTrendingDown className="size-3" />
-                  )}
-                  {Math.abs(expenseChange).toFixed(1)}%
-                </>
-              ) : (
-                'Planned expenses'
-              )}
-            </Badge>
-          </CardAction>
+          {!isLoading && expenseChange !== null && (
+            <CardAction>
+              <Badge variant="outline" className="flex items-center gap-1">
+                {expenseChange >= 0 ? (
+                  <IconTrendingUp className="size-3" />
+                ) : (
+                  <IconTrendingDown className="size-3" />
+                )}
+                {Math.abs(expenseChange).toFixed(1)}%
+              </Badge>
+            </CardAction>
+          )}
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
