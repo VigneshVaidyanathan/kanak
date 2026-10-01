@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { Doc } from './_generated/dataModel.js';
 import { mutation, query } from './_generated/server.js';
-import { requireUser } from './lib/auth.js';
+import { requireWorkspace } from './lib/auth.js';
 
 // Matches the shape the deleted API layer used to map: `id`, not `_id`, and
 // epoch-millisecond timestamps, since Convex cannot serialize a Date.
@@ -26,11 +26,11 @@ function byPriority(a: Doc<'transaction_rules'>, b: Doc<'transaction_rules'>) {
 export const getTransactionRulesByUserId = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     const rules = await ctx.db
       .query('transaction_rules')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
       .collect();
 
     return rules.sort(byPriority).map(toRule);
@@ -40,10 +40,10 @@ export const getTransactionRulesByUserId = query({
 export const getTransactionRuleById = query({
   args: { id: v.id('transaction_rules') },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     const rule = await ctx.db.get(args.id);
-    if (!rule || rule.userId !== userId) {
+    if (!rule || rule.workspaceId !== workspaceId) {
       return null;
     }
 
@@ -59,11 +59,11 @@ export const createTransactionRule = mutation({
     order: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { userId, workspaceId } = await requireWorkspace(ctx);
 
     const rules = await ctx.db
       .query('transaction_rules')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
       .collect();
 
     const maxOrder = rules.reduce((max, r) => Math.max(max, r.order), -1);
@@ -75,6 +75,7 @@ export const createTransactionRule = mutation({
       action: args.action,
       order: args.order ?? maxOrder + 1,
       userId,
+      workspaceId,
       createdAt: now,
       updatedAt: now,
     });
@@ -92,13 +93,13 @@ export const updateTransactionRule = mutation({
     order: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
     const { id, ...updates } = args;
 
     // "Not found" rather than "forbidden" on someone else's row: the response
     // should not confirm that an id exists.
     const existing = await ctx.db.get(id);
-    if (!existing || existing.userId !== userId) {
+    if (!existing || existing.workspaceId !== workspaceId) {
       throw new Error('Transaction rule not found');
     }
 
@@ -119,10 +120,10 @@ export const updateTransactionRule = mutation({
 export const deleteTransactionRule = mutation({
   args: { id: v.id('transaction_rules') },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     const existing = await ctx.db.get(args.id);
-    if (!existing || existing.userId !== userId) {
+    if (!existing || existing.workspaceId !== workspaceId) {
       throw new Error('Transaction rule not found');
     }
 
@@ -132,7 +133,7 @@ export const deleteTransactionRule = mutation({
     // Close the gap so `order` stays contiguous.
     const remaining = await ctx.db
       .query('transaction_rules')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
       .collect();
 
     await Promise.all(
@@ -157,7 +158,7 @@ export const updateTransactionRulesOrder = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     // Check every rule before writing any of them, so a request that includes
     // one foreign id cannot reorder the rest.
@@ -165,7 +166,7 @@ export const updateTransactionRulesOrder = mutation({
       args.updates.map((update) => ctx.db.get(update.id))
     );
 
-    if (rules.some((rule) => !rule || rule.userId !== userId)) {
+    if (rules.some((rule) => !rule || rule.workspaceId !== workspaceId)) {
       throw new Error(
         'Some transaction rules not found or do not belong to user'
       );
@@ -182,7 +183,7 @@ export const updateTransactionRulesOrder = mutation({
 
     const updated = await ctx.db
       .query('transaction_rules')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
       .collect();
 
     return updated.sort(byPriority).map(toRule);

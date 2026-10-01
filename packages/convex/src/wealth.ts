@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { Doc } from './_generated/dataModel.js';
 import { mutation, query } from './_generated/server.js';
-import { requireUser } from './lib/auth.js';
+import { requireWorkspace } from './lib/auth.js';
 
 // Matches the shape the deleted API layer used to map: `id`, not `_id`, and
 // epoch-millisecond timestamps, since Convex cannot serialize a Date.
@@ -46,11 +46,11 @@ function toEntry(entry: Doc<'wealth_entries'>) {
 export const getWealthSectionsByUserId = query({
   args: {},
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
     const sections = await ctx.db
       .query('wealth_sections')
-      .withIndex('by_userId_deletedAt', (q) =>
-        q.eq('userId', userId).eq('deletedAt', undefined)
+      .withIndex('by_workspaceId_deletedAt', (q) =>
+        q.eq('workspaceId', workspaceId).eq('deletedAt', undefined)
       )
       .collect();
 
@@ -86,14 +86,14 @@ export const createWealthSection = mutation({
     order: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { userId, workspaceId } = await requireWorkspace(ctx);
     // If no order specified, get the max order and add 1
     let order = args.order;
     if (order === undefined) {
       const sections = await ctx.db
         .query('wealth_sections')
-        .withIndex('by_userId_deletedAt', (q) =>
-          q.eq('userId', userId).eq('deletedAt', undefined)
+        .withIndex('by_workspaceId_deletedAt', (q) =>
+          q.eq('workspaceId', workspaceId).eq('deletedAt', undefined)
         )
         .collect();
 
@@ -104,6 +104,7 @@ export const createWealthSection = mutation({
     const now = Date.now();
     const sectionId = await ctx.db.insert('wealth_sections', {
       userId,
+      workspaceId,
       name: args.name,
       color: args.color || '#9E9E9E',
       operation: args.operation || 'add',
@@ -125,12 +126,16 @@ export const updateWealthSection = mutation({
     order: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
     const { id, ...updates } = args;
 
-    // Verify ownership
+    // Verify the row is in this workspace
     const existing = await ctx.db.get(id);
-    if (!existing || existing.userId !== userId || existing.deletedAt) {
+    if (
+      !existing ||
+      existing.workspaceId !== workspaceId ||
+      existing.deletedAt
+    ) {
       throw new Error('Wealth section not found');
     }
 
@@ -148,10 +153,14 @@ export const softDeleteWealthSection = mutation({
     id: v.id('wealth_sections'),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
-    // Verify ownership
+    const { workspaceId } = await requireWorkspace(ctx);
+    // Verify the row is in this workspace
     const existing = await ctx.db.get(args.id);
-    if (!existing || existing.userId !== userId || existing.deletedAt) {
+    if (
+      !existing ||
+      existing.workspaceId !== workspaceId ||
+      existing.deletedAt
+    ) {
       throw new Error('Wealth section not found');
     }
 
@@ -172,10 +181,10 @@ export const createWealthLineItem = mutation({
     order: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
-    // Verify section ownership
+    const { userId, workspaceId } = await requireWorkspace(ctx);
+    // Verify the section is in this workspace
     const section = await ctx.db.get(args.sectionId);
-    if (!section || section.userId !== userId || section.deletedAt) {
+    if (!section || section.workspaceId !== workspaceId || section.deletedAt) {
       throw new Error('Wealth section not found');
     }
 
@@ -200,6 +209,7 @@ export const createWealthLineItem = mutation({
     const now = Date.now();
     const lineItemId = await ctx.db.insert('wealth_line_items', {
       userId,
+      workspaceId,
       sectionId: args.sectionId,
       name: args.name,
       order,
@@ -219,19 +229,27 @@ export const updateWealthLineItem = mutation({
     order: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
     const { id, ...updates } = args;
 
-    // Verify ownership
+    // Verify the row is in this workspace
     const existing = await ctx.db.get(id);
-    if (!existing || existing.userId !== userId || existing.deletedAt) {
+    if (
+      !existing ||
+      existing.workspaceId !== workspaceId ||
+      existing.deletedAt
+    ) {
       throw new Error('Wealth line item not found');
     }
 
-    // If sectionId is being updated, verify the new section belongs to the user
+    // If sectionId is being updated, verify the new section is in this workspace
     if (updates.sectionId) {
       const section = await ctx.db.get(updates.sectionId);
-      if (!section || section.userId !== userId || section.deletedAt) {
+      if (
+        !section ||
+        section.workspaceId !== workspaceId ||
+        section.deletedAt
+      ) {
         throw new Error('Wealth section not found');
       }
     }
@@ -250,10 +268,14 @@ export const softDeleteWealthLineItem = mutation({
     id: v.id('wealth_line_items'),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
-    // Verify ownership
+    const { workspaceId } = await requireWorkspace(ctx);
+    // Verify the row is in this workspace
     const existing = await ctx.db.get(args.id);
-    if (!existing || existing.userId !== userId || existing.deletedAt) {
+    if (
+      !existing ||
+      existing.workspaceId !== workspaceId ||
+      existing.deletedAt
+    ) {
       throw new Error('Wealth line item not found');
     }
 
@@ -272,7 +294,7 @@ export const getWealthEntriesByDate = query({
     date: v.number(),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
     // Set time to start and end of day for comparison
     const startOfDay = new Date(args.date);
     startOfDay.setHours(0, 0, 0, 0);
@@ -281,9 +303,9 @@ export const getWealthEntriesByDate = query({
 
     return await ctx.db
       .query('wealth_entries')
-      .withIndex('by_userId_date', (q) =>
+      .withIndex('by_workspaceId_date', (q) =>
         q
-          .eq('userId', userId)
+          .eq('workspaceId', workspaceId)
           .gte('date', startOfDay.getTime())
           .lte('date', endOfDay.getTime())
       )
@@ -298,14 +320,14 @@ export const getWealthEntriesByDateRange = query({
     endDate: v.number(),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
     // Index range only: callers render the grid from sections + lineItemId,
     // so entries are not hydrated with their line item / section.
     const entries = await ctx.db
       .query('wealth_entries')
-      .withIndex('by_userId_date', (q) =>
+      .withIndex('by_workspaceId_date', (q) =>
         q
-          .eq('userId', userId)
+          .eq('workspaceId', workspaceId)
           .gte('date', args.startDate)
           .lte('date', args.endDate)
       )
@@ -326,18 +348,18 @@ export const createOrUpdateWealthEntries = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { userId, workspaceId } = await requireWorkspace(ctx);
     // Use date timestamp as-is (API sends UTC midnight; no timezone conversion)
     const entryTimestamp = args.date;
 
-    // Verify all line items belong to the user
+    // Verify all line items belong to this workspace
     const lineItemIds = args.entries.map((e) => e.lineItemId);
     const lineItems = await Promise.all(
       lineItemIds.map((id) => ctx.db.get(id))
     );
 
     const invalidLineItems = lineItems.filter(
-      (li) => !li || li.userId !== userId || li.deletedAt
+      (li) => !li || li.workspaceId !== workspaceId || li.deletedAt
     );
 
     if (invalidLineItems.length > 0) {
@@ -352,9 +374,9 @@ export const createOrUpdateWealthEntries = mutation({
         // Check if entry exists
         const existing = await ctx.db
           .query('wealth_entries')
-          .withIndex('by_userId_lineItemId_date_unique', (q) =>
+          .withIndex('by_workspaceId_lineItemId_date_unique', (q) =>
             q
-              .eq('userId', userId)
+              .eq('workspaceId', workspaceId)
               .eq('lineItemId', entry.lineItemId)
               .eq('date', entryTimestamp)
           )
@@ -371,6 +393,7 @@ export const createOrUpdateWealthEntries = mutation({
         } else {
           const entryId = await ctx.db.insert('wealth_entries', {
             userId,
+            workspaceId,
             lineItemId: entry.lineItemId,
             date: entryTimestamp,
             amount: entry.amount,
@@ -393,11 +416,11 @@ export const updateWealthEntriesDate = mutation({
     newDateTimestamp: v.number(),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
     const entries = await ctx.db
       .query('wealth_entries')
-      .withIndex('by_userId_date', (q) =>
-        q.eq('userId', userId).eq('date', args.oldDateTimestamp)
+      .withIndex('by_workspaceId_date', (q) =>
+        q.eq('workspaceId', workspaceId).eq('date', args.oldDateTimestamp)
       )
       .collect();
 
@@ -423,15 +446,15 @@ export const updateWealthSectionsOrder = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
-    // Verify all sections belong to the user
+    const { workspaceId } = await requireWorkspace(ctx);
+    // Verify all sections belong to this workspace
     const sectionIds = args.updates.map((u) => u.id);
     const userSections = await Promise.all(
       sectionIds.map((id) => ctx.db.get(id))
     );
 
     const invalidSections = userSections.filter(
-      (s) => !s || s.userId !== userId || s.deletedAt
+      (s) => !s || s.workspaceId !== workspaceId || s.deletedAt
     );
 
     if (invalidSections.length > 0) {
@@ -453,8 +476,8 @@ export const updateWealthSectionsOrder = mutation({
     // Return updated sections with line items
     const sections = await ctx.db
       .query('wealth_sections')
-      .withIndex('by_userId_deletedAt', (q) =>
-        q.eq('userId', userId).eq('deletedAt', undefined)
+      .withIndex('by_workspaceId_deletedAt', (q) =>
+        q.eq('workspaceId', workspaceId).eq('deletedAt', undefined)
       )
       .collect();
 
@@ -490,15 +513,15 @@ export const updateWealthLineItemsOrder = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
-    // Verify all line items belong to the user
+    const { workspaceId } = await requireWorkspace(ctx);
+    // Verify all line items belong to this workspace
     const lineItemIds = args.updates.map((u) => u.id);
     const userLineItems = await Promise.all(
       lineItemIds.map((id) => ctx.db.get(id))
     );
 
     const invalidLineItems = userLineItems.filter(
-      (li) => !li || li.userId !== userId || li.deletedAt
+      (li) => !li || li.workspaceId !== workspaceId || li.deletedAt
     );
 
     if (invalidLineItems.length > 0) {
@@ -520,8 +543,8 @@ export const updateWealthLineItemsOrder = mutation({
     // Return updated line items
     const lineItems = await ctx.db
       .query('wealth_line_items')
-      .withIndex('by_userId_deletedAt', (q) =>
-        q.eq('userId', userId).eq('deletedAt', undefined)
+      .withIndex('by_workspaceId_deletedAt', (q) =>
+        q.eq('workspaceId', workspaceId).eq('deletedAt', undefined)
       )
       .collect();
 

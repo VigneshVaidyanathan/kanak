@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { Doc } from './_generated/dataModel.js';
 import { mutation, query } from './_generated/server.js';
-import { requireUser } from './lib/auth.js';
+import { requireWorkspace } from './lib/auth.js';
 
 // Matches the shape the deleted API layer used to map: `id`, not `_id`, and
 // epoch-millisecond timestamps, since Convex cannot serialize a Date.
@@ -24,11 +24,11 @@ function toCategory(category: Doc<'categories'>) {
 export const getCategoriesByUserId = query({
   args: { activeOnly: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     const categories = await ctx.db
       .query('categories')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
       .collect();
 
     return categories
@@ -41,10 +41,10 @@ export const getCategoriesByUserId = query({
 export const getCategoryById = query({
   args: { id: v.id('categories') },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     const category = await ctx.db.get(args.id);
-    if (!category || category.userId !== userId) {
+    if (!category || category.workspaceId !== workspaceId) {
       return null;
     }
 
@@ -63,13 +63,14 @@ export const createCategory = mutation({
     active: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { userId, workspaceId } = await requireWorkspace(ctx);
     const now = Date.now();
 
     const categoryId = await ctx.db.insert('categories', {
       ...args,
       active: args.active ?? true,
       userId,
+      workspaceId,
       createdAt: now,
       updatedAt: now,
     });
@@ -90,13 +91,13 @@ export const updateCategory = mutation({
     active: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
     const { id, ...updates } = args;
 
     // "Not found" rather than "forbidden" on someone else's row: the response
     // should not confirm that an id exists.
     const existing = await ctx.db.get(id);
-    if (!existing || existing.userId !== userId) {
+    if (!existing || existing.workspaceId !== workspaceId) {
       throw new Error('Category not found');
     }
 
@@ -109,10 +110,10 @@ export const updateCategory = mutation({
 export const deactivateCategory = mutation({
   args: { id: v.id('categories') },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     const existing = await ctx.db.get(args.id);
-    if (!existing || existing.userId !== userId) {
+    if (!existing || existing.workspaceId !== workspaceId) {
       throw new Error('Category not found');
     }
 

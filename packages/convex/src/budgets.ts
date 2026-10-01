@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { Doc } from './_generated/dataModel.js';
 import { mutation, query } from './_generated/server.js';
-import { requireUser } from './lib/auth.js';
+import { requireWorkspace } from './lib/auth.js';
 
 // Matches the shape the deleted API layer used to map: `id`, not `_id`, and
 // epoch-millisecond timestamps, since Convex cannot serialize a Date.
@@ -27,11 +27,11 @@ export const getBudgetsByUserId = query({
     categoryId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     const budgets = await ctx.db
       .query('budgets')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
       .collect();
 
     return budgets
@@ -64,7 +64,7 @@ export const getBudgetHistory = query({
     months: v.number(),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     const wanted = new Set<string>();
     for (let i = 1; i <= args.months; i++) {
@@ -79,7 +79,7 @@ export const getBudgetHistory = query({
 
     const budgets = await ctx.db
       .query('budgets')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
       .collect();
 
     return (
@@ -105,13 +105,13 @@ export const getBudgetByCategory = query({
     month: v.number(),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     const budget = await ctx.db
       .query('budgets')
-      .withIndex('by_userId_categoryId_year_month', (q) =>
+      .withIndex('by_workspaceId_categoryId_year_month', (q) =>
         q
-          .eq('userId', userId)
+          .eq('workspaceId', workspaceId)
           .eq('categoryId', args.categoryId)
           .eq('year', args.year)
           .eq('month', args.month)
@@ -131,14 +131,14 @@ export const createOrUpdateBudget = mutation({
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { userId, workspaceId } = await requireWorkspace(ctx);
     const now = Date.now();
 
     const existing = await ctx.db
       .query('budgets')
-      .withIndex('by_userId_categoryId_year_month', (q) =>
+      .withIndex('by_workspaceId_categoryId_year_month', (q) =>
         q
-          .eq('userId', userId)
+          .eq('workspaceId', workspaceId)
           .eq('categoryId', args.categoryId)
           .eq('year', args.year)
           .eq('month', args.month)
@@ -157,6 +157,7 @@ export const createOrUpdateBudget = mutation({
     const budgetId = await ctx.db.insert('budgets', {
       ...args,
       userId,
+      workspaceId,
       createdAt: now,
       updatedAt: now,
     });
@@ -168,12 +169,12 @@ export const createOrUpdateBudget = mutation({
 export const deleteBudget = mutation({
   args: { id: v.id('budgets') },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     // "Not found" rather than "forbidden" on someone else's row: the response
     // should not confirm that an id exists.
     const existing = await ctx.db.get(args.id);
-    if (!existing || existing.userId !== userId) {
+    if (!existing || existing.workspaceId !== workspaceId) {
       throw new Error('Budget not found');
     }
 
@@ -190,13 +191,13 @@ export const updateBudgetActual = mutation({
     actual: v.number(),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { userId, workspaceId } = await requireWorkspace(ctx);
 
     const existing = await ctx.db
       .query('budgets')
-      .withIndex('by_userId_categoryId_year_month', (q) =>
+      .withIndex('by_workspaceId_categoryId_year_month', (q) =>
         q
-          .eq('userId', userId)
+          .eq('workspaceId', workspaceId)
           .eq('categoryId', args.categoryId)
           .eq('year', args.year)
           .eq('month', args.month)
@@ -215,6 +216,7 @@ export const updateBudgetActual = mutation({
     const now = Date.now();
     const budgetId = await ctx.db.insert('budgets', {
       userId,
+      workspaceId,
       categoryId: args.categoryId,
       month: args.month,
       year: args.year,
@@ -238,19 +240,19 @@ export const updateBudgetActual = mutation({
 export const recalculateActuals = mutation({
   args: { year: v.number(), month: v.number() },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { userId, workspaceId } = await requireWorkspace(ctx);
 
     const monthStart = new Date(args.year, args.month - 1, 1).getTime();
     const monthEnd = new Date(args.year, args.month, 0, 23, 59, 59).getTime();
 
     const transactions = await ctx.db
       .query('transactions')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
       .collect();
 
     const categories = await ctx.db
       .query('categories')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
       .collect();
 
     const known = new Set(categories.map((category) => category.title));
@@ -278,7 +280,7 @@ export const recalculateActuals = mutation({
 
     const budgets = await ctx.db
       .query('budgets')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
       .collect();
 
     const monthBudgets = budgets.filter(
@@ -307,6 +309,7 @@ export const recalculateActuals = mutation({
 
       await ctx.db.insert('budgets', {
         userId,
+        workspaceId,
         categoryId,
         month: args.month,
         year: args.year,

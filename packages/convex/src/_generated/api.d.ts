@@ -30,6 +30,7 @@ import type * as transactions from '../transactions.js';
 import type * as userSettings from '../userSettings.js';
 import type * as users from '../users.js';
 import type * as wealth from '../wealth.js';
+import type * as workspaces from '../workspaces.js';
 
 import type {
   ApiFromModules,
@@ -60,6 +61,7 @@ declare const fullApi: ApiFromModules<{
   userSettings: typeof userSettings;
   users: typeof users;
   wealth: typeof wealth;
+  workspaces: typeof workspaces;
 }>;
 
 /**

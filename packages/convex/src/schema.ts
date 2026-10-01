@@ -19,10 +19,35 @@ export default defineSchema({
     isAnonymous: v.optional(v.boolean()),
     // Ours. Optional because Convex Auth inserts users without them.
     role: v.optional(v.string()),
+    // The workspace this user is currently looking at. Every handler reads the
+    // workspace from here rather than from an argument, so switching is a
+    // single patch and Convex reactivity re-runs every subscribed query.
+    activeWorkspaceId: v.optional(v.id('workspaces')),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
   }).index('by_email', ['email']),
 
+  // A workspace is a family: the unit every row of financial data belongs to.
+  workspaces: defineTable({
+    name: v.string(),
+    createdBy: v.id('users'),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }),
+
+  // Membership carries no role: being a member means full read and write on
+  // that workspace's data. Add a role column when someone needs read-only.
+  workspace_members: defineTable({
+    workspaceId: v.id('workspaces'),
+    userId: v.id('users'),
+    createdAt: v.number(),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_userId', ['workspaceId', 'userId']),
+
+  // Every table below is scoped by `workspaceId`. `userId` is kept as the
+  // creator stamp — it is written on insert and never read for scoping.
   transactions: defineTable({
     date: v.number(),
     accountingDate: v.number(),
@@ -37,17 +62,21 @@ export default defineSchema({
     // Soft delete: absent or false means live. Never hard-delete transactions.
     isDeleted: v.optional(v.boolean()),
     userId: v.id('users'),
+    workspaceId: v.optional(v.id('workspaces')),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index('by_userId', ['userId'])
     .index('by_date', ['date'])
     .index('by_accountingDate', ['accountingDate'])
-    // Reads are almost always "this user, this date window": the transactions
-    // page and budget actuals both scope by accountingDate.
     .index('by_userId_accountingDate', ['userId', 'accountingDate'])
+    .index('by_userId_date', ['userId', 'date'])
+    // Reads are almost always "this workspace, this date window": the
+    // transactions page and budget actuals both scope by accountingDate.
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_accountingDate', ['workspaceId', 'accountingDate'])
     // Import dedupe matches on `date`, not accountingDate, so it needs its own.
-    .index('by_userId_date', ['userId', 'date']),
+    .index('by_workspaceId_date', ['workspaceId', 'date']),
 
   categories: defineTable({
     title: v.string(),
@@ -58,11 +87,13 @@ export default defineSchema({
     priority: v.optional(v.string()), // "needs", "wants", "savings", "insurance", "liabilities"
     active: v.boolean(),
     userId: v.id('users'),
+    workspaceId: v.optional(v.id('workspaces')),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index('by_userId', ['userId'])
-    .index('by_active', ['active']),
+    .index('by_active', ['active'])
+    .index('by_workspaceId', ['workspaceId']),
 
   bank_accounts: defineTable({
     name: v.string(),
@@ -72,11 +103,13 @@ export default defineSchema({
     branch: v.optional(v.string()),
     active: v.boolean(),
     userId: v.id('users'),
+    workspaceId: v.optional(v.id('workspaces')),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index('by_userId', ['userId'])
-    .index('by_active', ['active']),
+    .index('by_active', ['active'])
+    .index('by_workspaceId', ['workspaceId']),
 
   transaction_rules: defineTable({
     title: v.string(),
@@ -84,14 +117,18 @@ export default defineSchema({
     action: v.any(), // TransactionRuleAction structure
     order: v.number(),
     userId: v.id('users'),
+    workspaceId: v.optional(v.id('workspaces')),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index('by_userId', ['userId'])
-    .index('by_userId_order', ['userId', 'order']),
+    .index('by_userId_order', ['userId', 'order'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_order', ['workspaceId', 'order']),
 
   budgets: defineTable({
     userId: v.id('users'),
+    workspaceId: v.optional(v.id('workspaces')),
     categoryId: v.string(), // References category title
     month: v.number(), // 1-12
     year: v.number(),
@@ -108,10 +145,19 @@ export default defineSchema({
       'categoryId',
       'year',
       'month',
+    ])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_year_month', ['workspaceId', 'year', 'month'])
+    .index('by_workspaceId_categoryId_year_month', [
+      'workspaceId',
+      'categoryId',
+      'year',
+      'month',
     ]),
 
   wealth_sections: defineTable({
     userId: v.id('users'),
+    workspaceId: v.optional(v.id('workspaces')),
     name: v.string(),
     color: v.string(),
     operation: v.string(), // "add" or "subtract"
@@ -121,11 +167,14 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_userId', ['userId'])
-    .index('by_userId_deletedAt', ['userId', 'deletedAt']),
+    .index('by_userId_deletedAt', ['userId', 'deletedAt'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_deletedAt', ['workspaceId', 'deletedAt']),
 
   wealth_line_items: defineTable({
     sectionId: v.id('wealth_sections'),
     userId: v.id('users'),
+    workspaceId: v.optional(v.id('workspaces')),
     name: v.string(),
     order: v.number(),
     deletedAt: v.optional(v.number()),
@@ -134,11 +183,14 @@ export default defineSchema({
   })
     .index('by_userId', ['userId'])
     .index('by_sectionId', ['sectionId'])
-    .index('by_userId_deletedAt', ['userId', 'deletedAt']),
+    .index('by_userId_deletedAt', ['userId', 'deletedAt'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_deletedAt', ['workspaceId', 'deletedAt']),
 
   wealth_entries: defineTable({
     lineItemId: v.id('wealth_line_items'),
     userId: v.id('users'),
+    workspaceId: v.optional(v.id('workspaces')),
     date: v.number(),
     amount: v.number(),
     createdAt: v.number(),
@@ -148,14 +200,18 @@ export default defineSchema({
     .index('by_lineItemId', ['lineItemId'])
     .index('by_date', ['date'])
     .index('by_userId_date', ['userId', 'date'])
-    .index('by_userId_lineItemId_date_unique', [
-      'userId',
+    .index('by_userId_lineItemId_date_unique', ['userId', 'lineItemId', 'date'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_date', ['workspaceId', 'date'])
+    .index('by_workspaceId_lineItemId_date_unique', [
+      'workspaceId',
       'lineItemId',
       'date',
     ]),
 
   transaction_uploads: defineTable({
     userId: v.id('users'),
+    workspaceId: v.optional(v.id('workspaces')),
     storageId: v.optional(v.id('_storage')),
     fileName: v.string(),
     fileSize: v.number(),
@@ -163,13 +219,16 @@ export default defineSchema({
     uploadedAt: v.number(),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index('by_userId', ['userId']),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_workspaceId', ['workspaceId']),
 
   // One row per transaction changed by an update, holding the values as they
   // were just before the patch. A bulk action shares one batchId so the whole
   // action can be undone together.
   transaction_history: defineTable({
     userId: v.id('users'),
+    workspaceId: v.optional(v.id('workspaces')),
     transactionId: v.id('transactions'),
     batchId: v.string(),
     source: v.string(), // "update" | "batch" | "delete"
@@ -194,11 +253,15 @@ export default defineSchema({
   })
     .index('by_userId', ['userId'])
     .index('by_batchId', ['batchId'])
-    .index('by_transactionId', ['transactionId']),
+    .index('by_transactionId', ['transactionId'])
+    .index('by_workspaceId', ['workspaceId']),
 
   // App preferences. Deliberately not fields on `users`: that table is Convex
   // Auth's, inlined here with its own constraints, and preferences can grow
   // without anyone having to think about auth.
+  //
+  // Per-user, not per-workspace: the AI model is a personal preference that
+  // should follow someone between families.
   user_settings: defineTable({
     userId: v.id('users'),
     aiModel: v.optional(v.string()), // OpenRouter model id, e.g. "anthropic/claude-sonnet-5.5"
@@ -208,6 +271,7 @@ export default defineSchema({
 
   ai_chats: defineTable({
     userId: v.id('users'),
+    workspaceId: v.optional(v.id('workspaces')),
     title: v.string(),
     model: v.optional(v.string()), // the model as of creation, for display
     lastMessageAt: v.number(),
@@ -216,11 +280,14 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_userId', ['userId'])
-    .index('by_userId_lastMessageAt', ['userId', 'lastMessageAt']),
+    .index('by_userId_lastMessageAt', ['userId', 'lastMessageAt'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_lastMessageAt', ['workspaceId', 'lastMessageAt']),
 
   ai_messages: defineTable({
     chatId: v.id('ai_chats'),
     userId: v.id('users'),
+    workspaceId: v.optional(v.id('workspaces')),
     role: v.string(), // "user" | "assistant"
     // The part array as the chat UI holds it: text, tool-call and tool-result
     // entries, stored verbatim so a reopened chat replays its tool blocks.
@@ -229,5 +296,6 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_chatId_createdAt', ['chatId', 'createdAt'])
-    .index('by_userId', ['userId']),
+    .index('by_userId', ['userId'])
+    .index('by_workspaceId', ['workspaceId']),
 });

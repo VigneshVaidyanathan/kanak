@@ -7,7 +7,7 @@ import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel.js';
 import type { MutationCtx, QueryCtx } from './_generated/server.js';
 import { mutation, query } from './_generated/server.js';
-import { requireUser } from './lib/auth.js';
+import { requireWorkspace } from './lib/auth.js';
 import { matchesGroupFilter } from './lib/ruleMatcher.js';
 
 /** Soft-deleted rows are invisible to every read and every write path. */
@@ -63,6 +63,7 @@ async function recordHistory(
 
   await ctx.db.insert('transaction_history', {
     userId: existing.userId,
+    workspaceId: existing.workspaceId,
     transactionId: existing._id,
     batchId,
     source,
@@ -79,21 +80,21 @@ const accountingDateRange = {
 };
 
 /**
- * The user's transactions whose accountingDate falls inside the window
+ * The workspace's transactions whose accountingDate falls inside the window
  * (inclusive), read straight off the index rather than scanned and filtered.
  * The window is required: an unbounded read of a subscribed query is what made
  * these the most expensive reads in the deployment.
  */
 function accountingDateRangeQuery(
   ctx: QueryCtx,
-  userId: Id<'users'>,
+  workspaceId: Id<'workspaces'>,
   range: { startAccountingDate: number; endAccountingDate: number }
 ) {
   return ctx.db
     .query('transactions')
-    .withIndex('by_userId_accountingDate', (q) =>
+    .withIndex('by_workspaceId_accountingDate', (q) =>
       q
-        .eq('userId', userId)
+        .eq('workspaceId', workspaceId)
         .gte('accountingDate', range.startAccountingDate)
         .lte('accountingDate', range.endAccountingDate)
     )
@@ -124,7 +125,7 @@ export function toTransaction(
 }
 
 /**
- * A user's transactions in an accounting date window, newest first.
+ * A workspace's transactions in an accounting date window, newest first.
  *
  * This is a subscribed query, so every write to the table re-runs it. Keep the
  * window as narrow as the view needs.
@@ -132,9 +133,9 @@ export function toTransaction(
 export const getTransactionsByUserId = query({
   args: accountingDateRange,
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
-    const transactions = await accountingDateRangeQuery(ctx, userId, args);
+    const transactions = await accountingDateRangeQuery(ctx, workspaceId, args);
 
     return transactions
       .filter(isLive)
@@ -150,9 +151,9 @@ export const getTransactionsByUserId = query({
 export const getTransactionsByUserIdAndAccountingDateRange = query({
   args: accountingDateRange,
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
-    const transactions = await accountingDateRangeQuery(ctx, userId, args);
+    const transactions = await accountingDateRangeQuery(ctx, workspaceId, args);
 
     return transactions
       .filter((t) => isLive(t) && t.isInternal !== true)
@@ -163,14 +164,17 @@ export const getTransactionsByUserIdAndAccountingDateRange = query({
 export const getTransactionsByIds = query({
   args: { ids: v.array(v.id('transactions')) },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     const transactions = await Promise.all(
       args.ids.map((id) => ctx.db.get(id))
     );
 
     return transactions
-      .filter((t): t is Doc<'transactions'> => isLive(t) && t.userId === userId)
+      .filter(
+        (t): t is Doc<'transactions'> =>
+          isLive(t) && t.workspaceId === workspaceId
+      )
       .map(toTransaction);
   },
 });
@@ -189,13 +193,14 @@ export const createTransaction = mutation({
     isInternal: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { userId, workspaceId } = await requireWorkspace(ctx);
     const now = Date.now();
 
     const inserted = {
       ...args,
       accountingDate: args.accountingDate ?? args.date,
       userId,
+      workspaceId,
       createdAt: now,
       updatedAt: now,
     };
@@ -222,13 +227,13 @@ export const updateTransaction = mutation({
     isInternal: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
     const { id, ...updates } = args;
 
     // "Not found" rather than "forbidden" on someone else's row: the response
     // should not confirm that an id exists.
     const existing = await ctx.db.get(id);
-    if (!isLive(existing) || existing.userId !== userId) {
+    if (!isLive(existing) || existing.workspaceId !== workspaceId) {
       throw new Error('Transaction not found');
     }
 
@@ -248,10 +253,10 @@ export const updateTransaction = mutation({
 export const deleteTransaction = mutation({
   args: { id: v.id('transactions') },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     const existing = await ctx.db.get(args.id);
-    if (!isLive(existing) || existing.userId !== userId) {
+    if (!isLive(existing) || existing.workspaceId !== workspaceId) {
       throw new Error('Transaction not found');
     }
 
@@ -269,14 +274,14 @@ export const deleteTransaction = mutation({
 export const deleteTransactions = mutation({
   args: { ids: v.array(v.id('transactions')) },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     // Check every id before deleting any, so a request carrying one foreign
     // id cannot delete the rest.
     const existing = await Promise.all(args.ids.map((id) => ctx.db.get(id)));
 
     const validTransactions = existing.filter(
-      (t) => isLive(t) && t.userId === userId
+      (t) => isLive(t) && t.workspaceId === workspaceId
     );
 
     if (validTransactions.length !== args.ids.length) {
@@ -331,20 +336,20 @@ const duplicateKey = (t: {
 export const upsertTransactionsBatch = mutation({
   args: { transactions: v.array(v.object(transactionFields)) },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { userId, workspaceId } = await requireWorkspace(ctx);
 
     if (args.transactions.length === 0)
       return { created: 0, updated: 0, ids: [] as Id<'transactions'>[] };
 
     // A duplicate shares its `date` with the input it matches, so every row
     // that could match this chunk lies inside the chunk's own date span. One
-    // bounded read replaces a scan of the user's whole history.
+    // bounded read replaces a scan of the workspace's whole history.
     const dates = args.transactions.map((t) => t.date);
     const existing = await ctx.db
       .query('transactions')
-      .withIndex('by_userId_date', (q) =>
+      .withIndex('by_workspaceId_date', (q) =>
         q
-          .eq('userId', userId)
+          .eq('workspaceId', workspaceId)
           .gte('date', Math.min(...dates))
           .lte('date', Math.max(...dates))
       )
@@ -393,6 +398,7 @@ export const upsertTransactionsBatch = mutation({
         ...input,
         accountingDate,
         userId,
+        workspaceId,
         createdAt: now,
         updatedAt: now,
       });
@@ -426,7 +432,7 @@ export const updateTransactionsBatch = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
     const now = Date.now();
     // One batchId for the whole bulk action, so `revertBatch` can undo it whole.
     const batchId = crypto.randomUUID();
@@ -435,7 +441,7 @@ export const updateTransactionsBatch = mutation({
 
     for (const { id, ...fields } of args.updates) {
       const existing = await ctx.db.get(id);
-      if (!isLive(existing) || existing.userId !== userId) {
+      if (!isLive(existing) || existing.workspaceId !== workspaceId) {
         failed.push({ id, error: 'Transaction not found' });
         continue;
       }
@@ -461,11 +467,11 @@ export const updateTransactionsBatch = mutation({
 export const setAllTransactionsDeleted = mutation({
   args: { isDeleted: v.boolean() },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     const transactions = await ctx.db
       .query('transactions')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
       .collect();
 
     const targets = transactions.filter(
@@ -498,11 +504,11 @@ export const applyRules = mutation({
     preview: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     const allRules = await ctx.db
       .query('transaction_rules')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
       .collect();
 
     // One rule, or all of them in priority order: lowest `order` first, ties
@@ -527,12 +533,13 @@ export const applyRules = mutation({
         args.transactionIds.map((id) => ctx.db.get(id))
       );
       transactions = fetched.filter(
-        (t): t is Doc<'transactions'> => isLive(t) && t.userId === userId
+        (t): t is Doc<'transactions'> =>
+          isLive(t) && t.workspaceId === workspaceId
       );
     } else {
       const all = await ctx.db
         .query('transactions')
-        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
         .collect();
       transactions = all.filter(isLive);
     }
@@ -595,12 +602,12 @@ export const applyRules = mutation({
 export const getRecentHistoryBatches = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
-    // ponytail: scans the user's history; add a batches table if it ever grows
+    const { workspaceId } = await requireWorkspace(ctx);
+    // ponytail: scans the workspace's history; add a batches table if it grows
     // past a few thousand rows.
     const rows = await ctx.db
       .query('transaction_history')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
       .order('desc')
       .take(5000);
 
@@ -646,7 +653,7 @@ export const getRecentHistoryBatches = query({
 export const revertBatch = mutation({
   args: { batchId: v.string() },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
     const rows = await ctx.db
       .query('transaction_history')
       .withIndex('by_batchId', (q) => q.eq('batchId', args.batchId))
@@ -655,7 +662,7 @@ export const revertBatch = mutation({
     if (rows.length === 0) {
       throw new Error('Nothing to revert: unknown or already reverted batch');
     }
-    if (rows.some((row) => row.userId !== userId)) {
+    if (rows.some((row) => row.workspaceId !== workspaceId)) {
       throw new Error('Nothing to revert: unknown or already reverted batch');
     }
 
@@ -663,7 +670,7 @@ export const revertBatch = mutation({
     let reverted = 0;
     for (const row of rows) {
       const transaction = await ctx.db.get(row.transactionId);
-      if (transaction && transaction.userId === userId) {
+      if (transaction && transaction.workspaceId === workspaceId) {
         const restore: Record<string, unknown> = { updatedAt: now };
         for (const field of row.changed) {
           // A field missing from `before` had no value, and patching undefined

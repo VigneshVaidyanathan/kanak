@@ -1,9 +1,11 @@
 'use client';
 
 import { UpdateBanner } from '@/components/update-banner';
+import { WorkspaceGate } from '@/components/workspace-gate';
 import { Navbar09 } from '@/components/ui/shadcn-io/navbar-09';
 import { useAuthActions } from '@convex-dev/auth/react';
 import { api } from '@kanak/convex/src/_generated/api';
+import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import { DeviceProvider, Toaster } from '@kanak/ui';
 import {
   IconFileText,
@@ -14,13 +16,17 @@ import {
   IconSettings,
   IconCalendar,
 } from '@tabler/icons-react';
-import { Authenticated, useQuery } from 'convex/react';
-import { useRouter } from 'next/navigation';
+import { Authenticated, useMutation, useQuery } from 'convex/react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Suspense } from 'react';
 
 function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const user = useQuery(api.users.viewer, {});
+  const workspaces = useQuery(api.workspaces.myWorkspaces, {});
+  const setActiveWorkspace = useMutation(api.workspaces.setActiveWorkspace);
   const { signOut } = useAuthActions();
   const router = useRouter();
+  const pathname = usePathname();
 
   const handleUserItemClick = (item: string) => {
     if (item === 'logout') {
@@ -56,13 +62,28 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         onUserItemClick={handleUserItemClick}
         notificationCount={0}
         messageIndicator={false}
+        workspaces={workspaces ?? []}
+        onWorkspaceSelect={(id) => {
+          // Convex re-runs every subscribed query once the user document
+          // changes, so there is nothing to invalidate or navigate here.
+          void setActiveWorkspace({
+            workspaceId: id as Id<'workspaces'>,
+          });
+        }}
+        onCreateWorkspace={() => router.push(`${pathname}?newWorkspace=1`)}
       />
       <div className="flex-1 p-5 pb-24 bg-gray-50 flex flex-col container mx-auto">
         <UpdateBanner />
         {/* Convex resolves the auth token after the first client render, so a
             query fired before it lands throws Unauthorized and takes the page
             down. The gate holds the subscriptions until the token exists. */}
-        <Authenticated>{children}</Authenticated>
+        <Authenticated>
+          {/* WorkspaceGate reads a search param, which opts a route out of
+              static rendering unless it sits behind a Suspense boundary. */}
+          <Suspense>
+            <WorkspaceGate>{children}</WorkspaceGate>
+          </Suspense>
+        </Authenticated>
       </div>
       <Toaster position="top-right" />
     </div>

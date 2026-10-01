@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { Doc } from './_generated/dataModel.js';
 import { mutation, query } from './_generated/server.js';
-import { requireUser } from './lib/auth.js';
+import { requireUser, requireWorkspace } from './lib/auth.js';
 
 // Matches the shape the deleted API layer used to map: `id`, not `_id`, and
 // epoch-millisecond timestamps, since Convex cannot serialize a Date.
@@ -22,7 +22,8 @@ function toUpload(upload: Doc<'transaction_uploads'>) {
 export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
-    // Signed URLs are per-user: an unauthenticated caller must not be able to
+    // No workspace needed: this hands out a storage URL and touches no rows.
+    // Still gated, because an unauthenticated caller must not be able to
     // obtain one and write to this deployment's storage.
     await requireUser(ctx);
     return await ctx.storage.generateUploadUrl();
@@ -38,12 +39,13 @@ export const createTransactionUpload = mutation({
     uploadedAt: v.number(),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { userId, workspaceId } = await requireWorkspace(ctx);
     const now = Date.now();
 
     const uploadId = await ctx.db.insert('transaction_uploads', {
       ...args,
       userId,
+      workspaceId,
       createdAt: now,
       updatedAt: now,
     });
@@ -55,11 +57,11 @@ export const createTransactionUpload = mutation({
 export const getTransactionUploadsByUserId = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     const uploads = await ctx.db
       .query('transaction_uploads')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
       .collect();
 
     return uploads.sort((a, b) => b.uploadedAt - a.uploadedAt).map(toUpload);

@@ -1,6 +1,7 @@
 import { mapCsvColumns } from '@kanak/llm';
 import { v } from 'convex/values';
 import { action } from './_generated/server.js';
+import { requireUser } from './lib/auth.js';
 
 /**
  * Suggest a CSV-column -> transaction-field mapping using Jev.
@@ -19,7 +20,12 @@ export const suggestColumnMapping = action({
       })
     ),
   },
-  handler: async (_ctx, args) => {
+  handler: async (ctx, args) => {
+    // This spends the deployment's OpenRouter credit, so it is not open to
+    // unauthenticated callers. No workspace is needed: the rows come from the
+    // caller's own file and nothing is read from or written to the database.
+    await requireUser(ctx);
+
     if (!process.env.OPENROUTER_API_KEY && !process.env.TYPESAFE_API_KEY) {
       throw new Error('Auto-mapping is not configured');
     }

@@ -29,7 +29,13 @@ import {
   IconSparkles,
   IconWallet,
 } from '@tabler/icons-react';
-import { BellIcon, ChevronDownIcon, MailIcon } from 'lucide-react';
+import {
+  BellIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  MailIcon,
+  PlusIcon,
+} from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -159,11 +165,17 @@ const UserMenu = ({
   userEmail = 'john@example.com',
   userAvatar,
   onItemClick,
+  workspaces = [],
+  onWorkspaceSelect,
+  onCreateWorkspace,
 }: {
   userName?: string;
   userEmail?: string;
   userAvatar?: string;
   onItemClick?: (item: string) => void;
+  workspaces?: Navbar09Workspace[];
+  onWorkspaceSelect?: (id: string) => void;
+  onCreateWorkspace?: () => void;
 }) => (
   <DropdownMenu>
     <DropdownMenuTrigger asChild>
@@ -193,6 +205,32 @@ const UserMenu = ({
           </p>
         </div>
       </DropdownMenuLabel>
+      {workspaces.length > 0 && (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-xs text-muted-foreground">
+            Workspace
+          </DropdownMenuLabel>
+          {workspaces.map((workspace) => (
+            <DropdownMenuItem
+              key={workspace.id}
+              onClick={() => onWorkspaceSelect?.(workspace.id)}
+            >
+              <CheckIcon
+                className={cn(
+                  'h-4 w-4 mr-2',
+                  workspace.isActive ? 'opacity-100' : 'opacity-0'
+                )}
+              />
+              {workspace.name}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuItem onClick={() => onCreateWorkspace?.()}>
+            <PlusIcon className="h-4 w-4 mr-2" />
+            New workspace
+          </DropdownMenuItem>
+        </>
+      )}
       <DropdownMenuSeparator />
       <DropdownMenuItem onClick={() => onItemClick?.('profile')}>
         Profile
@@ -218,6 +256,12 @@ export interface Navbar09NavItem {
   icon: React.ComponentType<any>;
 }
 
+export interface Navbar09Workspace {
+  id: string;
+  name: string;
+  isActive: boolean;
+}
+
 export interface Navbar09Props extends React.HTMLAttributes<HTMLElement> {
   logo?: React.ReactNode;
   logoHref?: string;
@@ -233,6 +277,9 @@ export interface Navbar09Props extends React.HTMLAttributes<HTMLElement> {
   onMessageClick?: () => void;
   onNotificationItemClick?: (item: string) => void;
   onUserItemClick?: (item: string) => void;
+  workspaces?: Navbar09Workspace[];
+  onWorkspaceSelect?: (id: string) => void;
+  onCreateWorkspace?: () => void;
 }
 
 type DockNavItem = {
@@ -307,6 +354,9 @@ export const Navbar09 = React.forwardRef<HTMLElement, Navbar09Props>(
       onMessageClick,
       onNotificationItemClick,
       onUserItemClick,
+      workspaces,
+      onWorkspaceSelect,
+      onCreateWorkspace,
       ...props
     },
     ref
@@ -464,6 +514,9 @@ export const Navbar09 = React.forwardRef<HTMLElement, Navbar09Props>(
                 userEmail={userEmail}
                 userAvatar={userAvatar}
                 onItemClick={onUserItemClick}
+                workspaces={workspaces}
+                onWorkspaceSelect={onWorkspaceSelect}
+                onCreateWorkspace={onCreateWorkspace}
               />
             </div>
           </div>

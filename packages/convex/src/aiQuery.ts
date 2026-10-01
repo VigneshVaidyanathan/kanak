@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { query } from './_generated/server.js';
-import { requireUser } from './lib/auth.js';
+import { requireUser, requireWorkspace } from './lib/auth.js';
 
 /**
  * The tables the AI assistant may read, and the fields it may see of each.
@@ -15,7 +15,7 @@ import { requireUser } from './lib/auth.js';
  *    cannot leak through a query written today.
  *
  * `soft` names the column that marks a row as deleted. Every table here has a
- * `by_userId` index — the scan below relies on it.
+ * `by_workspaceId` index — the scan below relies on it.
  */
 const READABLE_TABLES = {
   transactions: {
@@ -125,12 +125,13 @@ function matches(
 }
 
 /**
- * A read of one allowlisted table, scoped to the signed-in user.
+ * A read of one allowlisted table, scoped to the caller's active workspace.
  *
  * This is a `query`, and that is the whole safety story: a Convex QueryCtx has
  * no `db.insert`, `patch`, `replace` or `delete` to call, so no argument the
  * model can produce turns this into a write. Scoping is equally structural —
- * `userId` comes from `requireUser`, and there is no argument to override it.
+ * `workspaceId` comes from `requireWorkspace`, and there is no argument to
+ * override it.
  */
 export const queryTable = query({
   args: {
@@ -147,7 +148,7 @@ export const queryTable = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     const spec = READABLE_TABLES[args.table as ReadableTable];
     if (!spec) {
@@ -177,7 +178,7 @@ export const queryTable = query({
 
     const rows = await ctx.db
       .query(args.table as ReadableTable)
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
       .collect();
 
     const live = rows.filter((row) => {

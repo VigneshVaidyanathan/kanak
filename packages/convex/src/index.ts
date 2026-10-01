@@ -10,3 +10,4 @@ export * from './transactions.js';
 export * from './userSettings.js';
 export * from './users.js';
 export * from './wealth.js';
+export * from './workspaces.js';

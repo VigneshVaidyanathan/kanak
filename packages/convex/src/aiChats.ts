@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { Doc, Id } from './_generated/dataModel.js';
 import { MutationCtx, QueryCtx, mutation, query } from './_generated/server.js';
-import { requireUser } from './lib/auth.js';
+import { requireWorkspace } from './lib/auth.js';
 
 // Matches the shape the rest of the app returns: `id`, not `_id`.
 function toChat(chat: Doc<'ai_chats'>) {
@@ -26,18 +26,22 @@ function toMessage(message: Doc<'ai_messages'>) {
 }
 
 /**
- * A chat the signed-in user owns, or null.
+ * A chat in the active workspace, or null.
  *
- * A chat belonging to someone else reads as absent rather than forbidden, so a
- * probe cannot tell a real id from a made-up one.
+ * A chat belonging to another workspace reads as absent rather than forbidden,
+ * so a probe cannot tell a real id from a made-up one.
  */
 async function ownedChat(
   ctx: QueryCtx | MutationCtx,
-  userId: Id<'users'>,
+  workspaceId: Id<'workspaces'>,
   id: Id<'ai_chats'>
 ) {
   const chat = await ctx.db.get(id);
-  if (!chat || chat.userId !== userId || chat.deletedAt !== undefined) {
+  if (
+    !chat ||
+    chat.workspaceId !== workspaceId ||
+    chat.deletedAt !== undefined
+  ) {
     return null;
   }
   return chat;
@@ -46,11 +50,13 @@ async function ownedChat(
 export const getChatsByUserId = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     const chats = await ctx.db
       .query('ai_chats')
-      .withIndex('by_userId_lastMessageAt', (q) => q.eq('userId', userId))
+      .withIndex('by_workspaceId_lastMessageAt', (q) =>
+        q.eq('workspaceId', workspaceId)
+      )
       .order('desc')
       .take(args.limit ?? 100);
 
@@ -61,9 +67,9 @@ export const getChatsByUserId = query({
 export const getMessagesByChatId = query({
   args: { chatId: v.id('ai_chats') },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
-    const chat = await ownedChat(ctx, userId, args.chatId);
+    const chat = await ownedChat(ctx, workspaceId, args.chatId);
     if (!chat) return [];
 
     const messages = await ctx.db
@@ -78,11 +84,12 @@ export const getMessagesByChatId = query({
 export const createChat = mutation({
   args: { title: v.optional(v.string()), model: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { userId, workspaceId } = await requireWorkspace(ctx);
     const now = Date.now();
 
     return await ctx.db.insert('ai_chats', {
       userId,
+      workspaceId,
       title: args.title ?? 'New chat',
       model: args.model,
       lastMessageAt: now,
@@ -103,9 +110,9 @@ export const appendMessages = mutation({
     messages: v.array(v.object({ role: v.string(), parts: v.any() })),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { userId, workspaceId } = await requireWorkspace(ctx);
 
-    const chat = await ownedChat(ctx, userId, args.chatId);
+    const chat = await ownedChat(ctx, workspaceId, args.chatId);
     if (!chat) throw new Error('Chat not found');
 
     const now = Date.now();
@@ -115,6 +122,7 @@ export const appendMessages = mutation({
       await ctx.db.insert('ai_messages', {
         chatId: args.chatId,
         userId,
+        workspaceId,
         role: message.role,
         parts: message.parts,
         createdAt: now + i,
@@ -128,9 +136,9 @@ export const appendMessages = mutation({
 export const renameChat = mutation({
   args: { id: v.id('ai_chats'), title: v.string() },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
-    const chat = await ownedChat(ctx, userId, args.id);
+    const chat = await ownedChat(ctx, workspaceId, args.id);
     if (!chat) throw new Error('Chat not found');
 
     await ctx.db.patch(args.id, { title: args.title, updatedAt: Date.now() });
@@ -140,9 +148,9 @@ export const renameChat = mutation({
 export const deleteChat = mutation({
   args: { id: v.id('ai_chats') },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
-    const chat = await ownedChat(ctx, userId, args.id);
+    const chat = await ownedChat(ctx, workspaceId, args.id);
     if (!chat) throw new Error('Chat not found');
 
     // Soft delete: the messages stay, as wealth_sections does.

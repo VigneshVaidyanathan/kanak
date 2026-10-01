@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { Doc } from './_generated/dataModel.js';
 import { mutation, query } from './_generated/server.js';
-import { requireUser } from './lib/auth.js';
+import { requireWorkspace } from './lib/auth.js';
 
 // The client used to receive this shape from the API layer, which mapped
 // `_id` to `id`. Doing it here keeps that contract now that there is no layer
@@ -24,11 +24,11 @@ function toBankAccount(bankAccount: Doc<'bank_accounts'>) {
 export const getBankAccountsByUserId = query({
   args: { activeOnly: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     const bankAccounts = await ctx.db
       .query('bank_accounts')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
       .collect();
 
     return bankAccounts
@@ -41,10 +41,10 @@ export const getBankAccountsByUserId = query({
 export const getBankAccountById = query({
   args: { id: v.id('bank_accounts') },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     const bankAccount = await ctx.db.get(args.id);
-    if (!bankAccount || bankAccount.userId !== userId) {
+    if (!bankAccount || bankAccount.workspaceId !== workspaceId) {
       return null;
     }
 
@@ -62,13 +62,14 @@ export const createBankAccount = mutation({
     active: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { userId, workspaceId } = await requireWorkspace(ctx);
     const now = Date.now();
 
     const bankAccountId = await ctx.db.insert('bank_accounts', {
       ...args,
       active: args.active ?? true,
       userId,
+      workspaceId,
       createdAt: now,
       updatedAt: now,
     });
@@ -88,13 +89,13 @@ export const updateBankAccount = mutation({
     active: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
     const { id, ...updates } = args;
 
     // "Not found" rather than "forbidden" on someone else's row: the response
     // should not confirm that an id exists.
     const existing = await ctx.db.get(id);
-    if (!existing || existing.userId !== userId) {
+    if (!existing || existing.workspaceId !== workspaceId) {
       throw new Error('Bank account not found');
     }
 
@@ -107,10 +108,10 @@ export const updateBankAccount = mutation({
 export const deactivateBankAccount = mutation({
   args: { id: v.id('bank_accounts') },
   handler: async (ctx, args) => {
-    const userId = await requireUser(ctx);
+    const { workspaceId } = await requireWorkspace(ctx);
 
     const existing = await ctx.db.get(args.id);
-    if (!existing || existing.userId !== userId) {
+    if (!existing || existing.workspaceId !== workspaceId) {
       throw new Error('Bank account not found');
     }
 
