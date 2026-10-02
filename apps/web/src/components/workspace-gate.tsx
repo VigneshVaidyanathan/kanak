@@ -1,5 +1,6 @@
 'use client';
 
+import { convexErrorMessage } from '@/lib/convex-error';
 import { api } from '@kanak/convex/src/_generated/api';
 import {
   Button,
@@ -44,8 +45,8 @@ export function WorkspaceGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!onlyOne || hasActive || autoSelected.current) return;
     autoSelected.current = true;
-    void setActive({ workspaceId: onlyOne.id }).catch((e: Error) =>
-      setError(e.message)
+    void setActive({ workspaceId: onlyOne.id }).catch((e) =>
+      setError(convexErrorMessage(e))
     );
   }, [onlyOne, hasActive, setActive]);
 
@@ -59,10 +60,10 @@ export function WorkspaceGate({ children }: { children: React.ReactNode }) {
 
   if (creating || workspaces.length === 0) {
     return (
-      <Centered title="Create a workspace">
+      <Centered title="Create a family">
         <p className="text-sm text-muted-foreground">
-          A workspace is one household&apos;s finances. Everyone you add to it
-          sees and edits the same transactions, budgets and net worth.
+          A family is one household&apos;s finances. Everyone you add to it sees
+          and edits the same transactions, budgets and net worth.
         </p>
         <form
           className="flex gap-2"
@@ -76,7 +77,7 @@ export function WorkspaceGate({ children }: { children: React.ReactNode }) {
                 setName('');
                 if (creating) router.replace(pathname);
               })
-              .catch((err: Error) => setError(err.message))
+              .catch((err) => setError(convexErrorMessage(err)))
               .finally(() => setBusy(false));
           }}
         >
@@ -107,7 +108,7 @@ export function WorkspaceGate({ children }: { children: React.ReactNode }) {
   // Several workspaces and none active: the user picks. A single workspace is
   // auto-selected by the effect above, so this screen never shows one option.
   return (
-    <Centered title="Choose a workspace">
+    <Centered title="Choose a family">
       <div className="flex flex-col gap-2">
         {workspaces.map((workspace) => (
           <Button
@@ -115,8 +116,8 @@ export function WorkspaceGate({ children }: { children: React.ReactNode }) {
             variant="outline"
             className="justify-start"
             onClick={() => {
-              void setActive({ workspaceId: workspace.id }).catch((e: Error) =>
-                setError(e.message)
+              void setActive({ workspaceId: workspace.id }).catch((e) =>
+                setError(convexErrorMessage(e))
               );
             }}
           >

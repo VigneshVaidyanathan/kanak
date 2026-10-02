@@ -209,7 +209,7 @@ const UserMenu = ({
         <>
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="text-xs text-muted-foreground">
-            Workspace
+            Family
           </DropdownMenuLabel>
           {workspaces.map((workspace) => (
             <DropdownMenuItem
@@ -227,7 +227,7 @@ const UserMenu = ({
           ))}
           <DropdownMenuItem onClick={() => onCreateWorkspace?.()}>
             <PlusIcon className="h-4 w-4 mr-2" />
-            New workspace
+            New family
           </DropdownMenuItem>
         </>
       )}
@@ -361,6 +361,7 @@ export const Navbar09 = React.forwardRef<HTMLElement, Navbar09Props>(
     },
     ref
   ) => {
+    const activeWorkspace = workspaces?.find((w) => w.isActive);
     const [isMobile, setIsMobile] = useState(false);
     const containerRef = useRef<HTMLElement>(null);
     const searchId = useId();
@@ -431,7 +432,7 @@ export const Navbar09 = React.forwardRef<HTMLElement, Navbar09Props>(
           <div className="container mx-auto flex h-16 max-w-screen-2xl items-center justify-between gap-4">
             {/* Left side */}
             <div className="flex flex-1 items-center gap-2">
-              <div className="flex items-center gap-6">
+              <div className="flex items-center gap-3">
                 <button
                   onClick={(e) => e.preventDefault()}
                   className="flex items-center space-x-2 text-primary hover:text-primary/90 transition-colors cursor-pointer"
@@ -439,6 +440,14 @@ export const Navbar09 = React.forwardRef<HTMLElement, Navbar09Props>(
                   <div className="text-base">{logo}</div>
                   <span className="font-bold text-lg">Kanak</span>
                 </button>
+                {activeWorkspace && (
+                  <div className="flex items-center gap-3 text-muted-foreground">
+                    <span aria-hidden="true">|</span>
+                    <span className="text-sm font-medium">
+                      {activeWorkspace.name}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
             {/* Middle area - Desktop navigation icons */}

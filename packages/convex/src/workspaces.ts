@@ -1,8 +1,29 @@
 import { getAuthUserId } from '@convex-dev/auth/server';
-import { v } from 'convex/values';
+import { ConvexError, v } from 'convex/values';
 import type { Id } from './_generated/dataModel.js';
-import { internalMutation, mutation, query } from './_generated/server.js';
+import type { QueryCtx } from './_generated/server.js';
+import { mutation, query } from './_generated/server.js';
 import { requireUser } from './lib/auth.js';
+
+/** Throws unless the user is a member of the workspace. */
+async function assertMember(
+  ctx: QueryCtx,
+  workspaceId: Id<'workspaces'>,
+  userId: Id<'users'>
+) {
+  const membership = await ctx.db
+    .query('workspace_members')
+    .withIndex('by_workspaceId_userId', (q) =>
+      q.eq('workspaceId', workspaceId).eq('userId', userId)
+    )
+    .unique();
+
+  if (membership === null) {
+    throw new Error('Forbidden');
+  }
+
+  return membership;
+}
 
 /**
  * Every workspace the signed-in user belongs to.
@@ -64,7 +85,7 @@ export const createWorkspace = mutation({
     const name = args.name.trim();
 
     if (name.length === 0) {
-      throw new Error('Workspace name is required.');
+      throw new ConvexError('Family name is required.');
     }
 
     const now = Date.now();
@@ -102,16 +123,7 @@ export const setActiveWorkspace = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
 
-    const membership = await ctx.db
-      .query('workspace_members')
-      .withIndex('by_workspaceId_userId', (q) =>
-        q.eq('workspaceId', args.workspaceId).eq('userId', userId)
-      )
-      .unique();
-
-    if (membership === null) {
-      throw new Error('Forbidden');
-    }
+    await assertMember(ctx, args.workspaceId, userId);
 
     await ctx.db.patch(userId, {
       activeWorkspaceId: args.workspaceId,
@@ -121,23 +133,77 @@ export const setActiveWorkspace = mutation({
 });
 
 /**
- * Adds an already-registered user to a workspace.
+ * The members of a workspace, for the family settings screen.
  *
- *   cd packages/convex
- *   npx convex run workspaces:addMemberByEmail '{"workspaceId":"...","email":"them@example.com"}'
- *
- * ponytail: internal, so CLI-only on purpose — there is no invite or
- * acceptance flow yet, and an in-app "add by email" button without one would
- * let any member pull a stranger's account into their family's finances.
- * Idempotent: adding an existing member is a no-op.
+ * Membership-gated rather than open: the response carries other people's
+ * names and email addresses.
  */
-export const addMemberByEmail = internalMutation({
+export const listMembers = query({
+  args: { workspaceId: v.id('workspaces') },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    await assertMember(ctx, args.workspaceId, userId);
+
+    const memberships = await ctx.db
+      .query('workspace_members')
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+      .collect();
+
+    const members: {
+      userId: Id<'users'>;
+      name?: string;
+      email?: string;
+      isSelf: boolean;
+      joinedAt: number;
+    }[] = [];
+
+    for (const membership of memberships) {
+      const user = await ctx.db.get(membership.userId);
+      if (!user) {
+        continue;
+      }
+      members.push({
+        userId: user._id,
+        name: user.name,
+        email: user.email,
+        isSelf: user._id === userId,
+        joinedAt: membership.createdAt,
+      });
+    }
+
+    members.sort((a, b) => a.joinedAt - b.joinedAt);
+    return members;
+  },
+});
+
+export const renameWorkspace = mutation({
+  args: { workspaceId: v.id('workspaces'), name: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    await assertMember(ctx, args.workspaceId, userId);
+
+    const name = args.name.trim();
+    if (name.length === 0) {
+      throw new ConvexError('Family name is required.');
+    }
+
+    await ctx.db.patch(args.workspaceId, { name, updatedAt: Date.now() });
+  },
+});
+
+/**
+ * Adds an already-registered user to a workspace, by email.
+ *
+ * There is no invite or acceptance step: the person is added immediately and
+ * can read and edit every transaction, budget and wealth entry in this
+ * workspace from their next page load. Any member can do this to any
+ * registered account. `removeMember` is the way back.
+ */
+export const addMember = mutation({
   args: { workspaceId: v.id('workspaces'), email: v.string() },
   handler: async (ctx, args) => {
-    const workspace = await ctx.db.get(args.workspaceId);
-    if (!workspace) {
-      throw new Error('No such workspace.');
-    }
+    const userId = await requireUser(ctx);
+    await assertMember(ctx, args.workspaceId, userId);
 
     // Emails are normalized to lowercase at sign-in (auth.ts `profile`), so
     // the lookup has to be too.
@@ -148,7 +214,9 @@ export const addMemberByEmail = internalMutation({
       .unique();
 
     if (!user) {
-      throw new Error(`No user with email ${email}. They must sign up first.`);
+      throw new ConvexError(
+        `No account for ${email}. They need to sign up before you can add them.`
+      );
     }
 
     const existing = await ctx.db
@@ -159,7 +227,7 @@ export const addMemberByEmail = internalMutation({
       .unique();
 
     if (existing !== null) {
-      return { added: false, workspace: workspace.name, email };
+      return { added: false };
     }
 
     await ctx.db.insert('workspace_members', {
@@ -168,11 +236,50 @@ export const addMemberByEmail = internalMutation({
       createdAt: Date.now(),
     });
 
-    // A user with nowhere to go lands here on their next sign-in.
+    // Someone with nowhere to go lands here on their next sign-in.
     if (!user.activeWorkspaceId) {
       await ctx.db.patch(user._id, { activeWorkspaceId: args.workspaceId });
     }
 
-    return { added: true, workspace: workspace.name, email };
+    return { added: true };
+  },
+});
+
+/**
+ * Removes a member.
+ *
+ * The last member cannot be removed: a workspace with nobody in it holds data
+ * no one can ever reach again. Someone removed while looking at this workspace
+ * has `activeWorkspaceId` cleared, so their next query sends them to the
+ * chooser rather than failing on `requireWorkspace`'s membership check.
+ */
+export const removeMember = mutation({
+  args: { workspaceId: v.id('workspaces'), userId: v.id('users') },
+  handler: async (ctx, args) => {
+    const callerId = await requireUser(ctx);
+    await assertMember(ctx, args.workspaceId, callerId);
+
+    const memberships = await ctx.db
+      .query('workspace_members')
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+      .collect();
+
+    if (memberships.length <= 1) {
+      throw new ConvexError('A family needs at least one member.');
+    }
+
+    const membership = memberships.find((m) => m.userId === args.userId);
+    if (!membership) {
+      return { removed: false };
+    }
+
+    await ctx.db.delete(membership._id);
+
+    const removed = await ctx.db.get(args.userId);
+    if (removed?.activeWorkspaceId === args.workspaceId) {
+      await ctx.db.patch(args.userId, { activeWorkspaceId: undefined });
+    }
+
+    return { removed: true };
   },
 });

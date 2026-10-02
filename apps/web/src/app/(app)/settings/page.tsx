@@ -9,12 +9,14 @@ import {
   IconBuildingBank,
   IconCategory,
   IconFilter,
+  IconUsers,
   IconSparkles,
   IconUpload,
 } from '@tabler/icons-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { BankAccountsSection } from './bank-accounts-section';
+import { FamilySection } from './family-section';
 import { TransactionUploadsSection } from '@/components/transactions/upload-csv/transaction-uploads-section';
 
 export default function SettingsPage() {
@@ -34,6 +36,7 @@ export default function SettingsPage() {
         'transaction-rules',
         'transaction-uploads',
         'ai',
+        'family',
       ].includes(tabParam)
     ) {
       setActiveTab(tabParam);
@@ -102,6 +105,13 @@ export default function SettingsPage() {
                 Transaction uploads
               </TabsTrigger>
               <TabsTrigger
+                value="family"
+                className="cursor-pointer w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm py-2"
+              >
+                <IconUsers className="shrink-0 size-4" />
+                Family
+              </TabsTrigger>
+              <TabsTrigger
                 value="ai"
                 className="cursor-pointer w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm py-2"
               >
@@ -124,6 +134,9 @@ export default function SettingsPage() {
             </TabsContent>
             <TabsContent value="transaction-uploads" className="mt-0">
               <TransactionUploadsSection />
+            </TabsContent>
+            <TabsContent value="family" className="mt-0">
+              <FamilySection />
             </TabsContent>
             <TabsContent value="ai" className="mt-0">
               <AiSettingsSection />
