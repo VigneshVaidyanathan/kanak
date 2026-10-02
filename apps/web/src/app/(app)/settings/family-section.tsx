@@ -18,9 +18,15 @@ export function FamilySection() {
     active ? { workspaceId: active.id as Id<'workspaces'> } : 'skip'
   );
 
+  const invites = useQuery(
+    api.workspaces.listInvites,
+    active ? { workspaceId: active.id as Id<'workspaces'> } : 'skip'
+  );
+
   const rename = useMutation(api.workspaces.renameWorkspace);
   const addMember = useMutation(api.workspaces.addMember);
   const removeMember = useMutation(api.workspaces.removeMember);
+  const revokeInvite = useMutation(api.workspaces.revokeInvite);
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -69,8 +75,8 @@ export function FamilySection() {
         <h2 className="text-lg font-semibold">Members</h2>
         <p className="text-sm text-muted-foreground">
           Everyone here sees and edits this family&apos;s transactions, budgets
-          and net worth. There is no invite step — adding someone gives them
-          access straight away.
+          and net worth. Someone with an account is added straight away; someone
+          without one is invited, and joins when they sign up with that email.
         </p>
 
         <ul className="flex flex-col divide-y rounded-md border max-w-md">
@@ -110,6 +116,50 @@ export function FamilySection() {
           ))}
         </ul>
 
+        {invites && invites.length > 0 && (
+          <ul className="flex flex-col divide-y rounded-md border border-dashed max-w-md mt-2">
+            {invites.map((invite) => (
+              <li
+                key={invite.id}
+                className="flex items-center justify-between gap-2 px-3 py-2"
+              >
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">{invite.email}</span>
+                  <span className="text-xs text-muted-foreground">
+                    Invited — waiting for them to sign up
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      void navigator.clipboard
+                        .writeText(signUpLink(invite.email))
+                        .then(() => toast.success('Sign-up link copied'))
+                        .catch(() => toast.error('Could not copy the link'));
+                    }}
+                  >
+                    Copy link
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Cancel invite for ${invite.email}`}
+                    onClick={() => {
+                      revokeInvite({ inviteId: invite.id })
+                        .then(() => toast.success('Invite cancelled'))
+                        .catch((err) => toast.error(message(err)));
+                    }}
+                  >
+                    <IconTrash className="size-4" />
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
         <form
           className="flex gap-2 max-w-md mt-2"
           onSubmit={(e) => {
@@ -120,7 +170,11 @@ export function FamilySection() {
               .then((result) => {
                 setEmail('');
                 toast.success(
-                  result.added ? 'Member added' : 'Already a member'
+                  result.added
+                    ? 'Member added'
+                    : result.invited
+                      ? 'Invited — send them the sign-up link'
+                      : 'Already a member'
                 );
               })
               .catch((err) => toast.error(message(err)))
@@ -140,4 +194,10 @@ export function FamilySection() {
       </section>
     </div>
   );
+}
+
+// ponytail: no email is sent, so the inviter passes this along themselves.
+// Wire it to a mailer when "they never got the invite" starts happening.
+function signUpLink(email: string) {
+  return `${window.location.origin}/signup?email=${encodeURIComponent(email)}`;
 }

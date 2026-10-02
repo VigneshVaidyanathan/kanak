@@ -192,12 +192,14 @@ export const renameWorkspace = mutation({
 });
 
 /**
- * Adds an already-registered user to a workspace, by email.
+ * Adds someone to a workspace by email.
  *
- * There is no invite or acceptance step: the person is added immediately and
- * can read and edit every transaction, budget and wealth entry in this
- * workspace from their next page load. Any member can do this to any
- * registered account. `removeMember` is the way back.
+ * Registered already: they are added immediately and can read and edit every
+ * transaction, budget and wealth entry in this workspace from their next page
+ * load. Not registered: an invite row is written instead, and signing up with
+ * that email turns it into a membership (auth.ts
+ * `afterUserCreatedOrUpdated`). Either way there is no acceptance step, and
+ * any member can do this. `removeMember` and `revokeInvite` are the way back.
  */
 export const addMember = mutation({
   args: { workspaceId: v.id('workspaces'), email: v.string() },
@@ -214,9 +216,23 @@ export const addMember = mutation({
       .unique();
 
     if (!user) {
-      throw new ConvexError(
-        `No account for ${email}. They need to sign up before you can add them.`
-      );
+      const pending = await ctx.db
+        .query('workspace_invites')
+        .withIndex('by_workspaceId_email', (q) =>
+          q.eq('workspaceId', args.workspaceId).eq('email', email)
+        )
+        .unique();
+
+      if (pending === null) {
+        await ctx.db.insert('workspace_invites', {
+          workspaceId: args.workspaceId,
+          email,
+          invitedBy: userId,
+          createdAt: Date.now(),
+        });
+      }
+
+      return { added: false, invited: true };
     }
 
     const existing = await ctx.db
@@ -227,7 +243,7 @@ export const addMember = mutation({
       .unique();
 
     if (existing !== null) {
-      return { added: false };
+      return { added: false, invited: false };
     }
 
     await ctx.db.insert('workspace_members', {
@@ -241,7 +257,40 @@ export const addMember = mutation({
       await ctx.db.patch(user._id, { activeWorkspaceId: args.workspaceId });
     }
 
-    return { added: true };
+    return { added: true, invited: false };
+  },
+});
+
+/** Invites for this workspace that nobody has signed up against yet. */
+export const listInvites = query({
+  args: { workspaceId: v.id('workspaces') },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    await assertMember(ctx, args.workspaceId, userId);
+
+    const invites = await ctx.db
+      .query('workspace_invites')
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+      .collect();
+
+    return invites.map((invite) => ({
+      id: invite._id,
+      email: invite.email,
+      createdAt: invite.createdAt,
+    }));
+  },
+});
+
+export const revokeInvite = mutation({
+  args: { inviteId: v.id('workspace_invites') },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    const invite = await ctx.db.get(args.inviteId);
+    if (!invite) {
+      return;
+    }
+    await assertMember(ctx, invite.workspaceId, userId);
+    await ctx.db.delete(args.inviteId);
   },
 });
 

@@ -46,6 +46,25 @@ export default defineSchema({
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_userId', ['workspaceId', 'userId']),
 
+  // An invite is a membership waiting for an account. Any member can create
+  // one for an email that has not signed up yet; it turns into a
+  // `workspace_members` row the moment that email registers (auth.ts
+  // `afterUserCreatedOrUpdated`). An email with no invite cannot sign up at
+  // all, which is the only thing keeping registration closed.
+  //
+  // ponytail: no token, no expiry, no email sent — the invite is keyed by
+  // email and the inviter passes the sign-up link along themselves. Add a
+  // token when invites have to survive being forwarded to the wrong person.
+  workspace_invites: defineTable({
+    workspaceId: v.id('workspaces'),
+    email: v.string(),
+    invitedBy: v.id('users'),
+    createdAt: v.number(),
+  })
+    .index('by_email', ['email'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_email', ['workspaceId', 'email']),
+
   // Every table below is scoped by `workspaceId`. `userId` is kept as the
   // creator stamp — it is written on insert and never read for scoping.
   transactions: defineTable({

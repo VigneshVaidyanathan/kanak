@@ -116,6 +116,12 @@ function AuthPageContent() {
             </Button>
           </div>
         </form>
+        <p className="text-center text-sm text-gray-500">
+          Invited to a family?{' '}
+          <a className="underline" href="/signup">
+            Create your account
+          </a>
+        </p>
       </div>
     </div>
   );

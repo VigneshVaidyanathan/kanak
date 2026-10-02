@@ -8,35 +8,35 @@
  * @module
  */
 
-import type * as aiChat from '../aiChat.js';
-import type * as aiChats from '../aiChats.js';
-import type * as aiQuery from '../aiQuery.js';
-import type * as auth from '../auth.js';
-import type * as bankAccounts from '../bankAccounts.js';
-import type * as budgets from '../budgets.js';
-import type * as categories from '../categories.js';
-import type * as csvMapping from '../csvMapping.js';
-import type * as http from '../http.js';
-import type * as index from '../index.js';
-import type * as lib_aiPrompt from '../lib/aiPrompt.js';
-import type * as lib_aiTools from '../lib/aiTools.js';
-import type * as lib_auth from '../lib/auth.js';
-import type * as lib_ruleMatcher from '../lib/ruleMatcher.js';
-import type * as lib_sse from '../lib/sse.js';
-import type * as migrations from '../migrations.js';
-import type * as transactionRules from '../transactionRules.js';
-import type * as transactionUploads from '../transactionUploads.js';
-import type * as transactions from '../transactions.js';
-import type * as userSettings from '../userSettings.js';
-import type * as users from '../users.js';
-import type * as wealth from '../wealth.js';
-import type * as workspaces from '../workspaces.js';
+import type * as aiChat from "../aiChat.js";
+import type * as aiChats from "../aiChats.js";
+import type * as aiQuery from "../aiQuery.js";
+import type * as auth from "../auth.js";
+import type * as bankAccounts from "../bankAccounts.js";
+import type * as budgets from "../budgets.js";
+import type * as categories from "../categories.js";
+import type * as csvMapping from "../csvMapping.js";
+import type * as http from "../http.js";
+import type * as index from "../index.js";
+import type * as lib_aiPrompt from "../lib/aiPrompt.js";
+import type * as lib_aiTools from "../lib/aiTools.js";
+import type * as lib_auth from "../lib/auth.js";
+import type * as lib_ruleMatcher from "../lib/ruleMatcher.js";
+import type * as lib_sse from "../lib/sse.js";
+import type * as migrations from "../migrations.js";
+import type * as transactionRules from "../transactionRules.js";
+import type * as transactionUploads from "../transactionUploads.js";
+import type * as transactions from "../transactions.js";
+import type * as userSettings from "../userSettings.js";
+import type * as users from "../users.js";
+import type * as wealth from "../wealth.js";
+import type * as workspaces from "../workspaces.js";
 
 import type {
   ApiFromModules,
   FilterApi,
   FunctionReference,
-} from 'convex/server';
+} from "convex/server";
 
 declare const fullApi: ApiFromModules<{
   aiChat: typeof aiChat;
@@ -49,11 +49,11 @@ declare const fullApi: ApiFromModules<{
   csvMapping: typeof csvMapping;
   http: typeof http;
   index: typeof index;
-  'lib/aiPrompt': typeof lib_aiPrompt;
-  'lib/aiTools': typeof lib_aiTools;
-  'lib/auth': typeof lib_auth;
-  'lib/ruleMatcher': typeof lib_ruleMatcher;
-  'lib/sse': typeof lib_sse;
+  "lib/aiPrompt": typeof lib_aiPrompt;
+  "lib/aiTools": typeof lib_aiTools;
+  "lib/auth": typeof lib_auth;
+  "lib/ruleMatcher": typeof lib_ruleMatcher;
+  "lib/sse": typeof lib_sse;
   migrations: typeof migrations;
   transactionRules: typeof transactionRules;
   transactionUploads: typeof transactionUploads;
@@ -74,7 +74,7 @@ declare const fullApi: ApiFromModules<{
  */
 export declare const api: FilterApi<
   typeof fullApi,
-  FunctionReference<any, 'public'>
+  FunctionReference<any, "public">
 >;
 
 /**
@@ -87,7 +87,7 @@ export declare const api: FilterApi<
  */
 export declare const internal: FilterApi<
   typeof fullApi,
-  FunctionReference<any, 'internal'>
+  FunctionReference<any, "internal">
 >;
 
 export declare const components: {};
