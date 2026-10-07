@@ -2,10 +2,10 @@
 
 import { UpdateBanner } from '@/components/update-banner';
 import { WorkspaceGate } from '@/components/workspace-gate';
+import { useWorkspaceSwitch } from '@/components/workspace-switch';
 import { Navbar09 } from '@/components/ui/shadcn-io/navbar-09';
 import { useAuthActions } from '@convex-dev/auth/react';
 import { api } from '@kanak/convex/src/_generated/api';
-import type { Id } from '@kanak/convex/src/_generated/dataModel';
 import { DeviceProvider, Toaster } from '@kanak/ui';
 import {
   IconFileText,
@@ -16,14 +16,15 @@ import {
   IconSettings,
   IconCalendar,
 } from '@tabler/icons-react';
-import { Authenticated, useMutation, useQuery } from 'convex/react';
+import { Authenticated, useQuery } from 'convex/react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Suspense } from 'react';
 
 function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const user = useQuery(api.users.viewer, {});
   const workspaces = useQuery(api.workspaces.myWorkspaces, {});
-  const setActiveWorkspace = useMutation(api.workspaces.setActiveWorkspace);
+  const { select: selectWorkspace, dialog: workspacePinDialog } =
+    useWorkspaceSwitch();
   const { signOut } = useAuthActions();
   const router = useRouter();
   const pathname = usePathname();
@@ -64,11 +65,8 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         messageIndicator={false}
         workspaces={workspaces ?? []}
         onWorkspaceSelect={(id) => {
-          // Convex re-runs every subscribed query once the user document
-          // changes, so there is nothing to invalidate or navigate here.
-          void setActiveWorkspace({
-            workspaceId: id as Id<'workspaces'>,
-          });
+          const workspace = workspaces?.find((w) => w.id === id);
+          if (workspace) selectWorkspace(workspace);
         }}
         onCreateWorkspace={() => router.push(`${pathname}?newWorkspace=1`)}
       />
@@ -85,6 +83,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
           </Suspense>
         </Authenticated>
       </div>
+      {workspacePinDialog}
       <Toaster position="top-right" />
     </div>
   );

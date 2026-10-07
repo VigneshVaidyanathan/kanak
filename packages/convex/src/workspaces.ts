@@ -25,6 +25,12 @@ async function assertMember(
   return membership;
 }
 
+/** A fresh switch code. Random rather than user-chosen: nobody picks 000000. */
+function newPin() {
+  const n = crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000;
+  return n.toString().padStart(6, '0');
+}
+
 /**
  * Every workspace the signed-in user belongs to.
  *
@@ -54,6 +60,7 @@ export const myWorkspaces = query({
       id: Id<'workspaces'>;
       name: string;
       isActive: boolean;
+      hasPin: boolean;
     }[] = [];
     for (const membership of memberships) {
       const workspace = await ctx.db.get(membership.workspaceId);
@@ -64,6 +71,9 @@ export const myWorkspaces = query({
         id: workspace._id,
         name: workspace.name,
         isActive: user?.activeWorkspaceId === workspace._id,
+        // The code itself stays server-side; the switcher only needs to know
+        // whether to ask for one.
+        hasPin: workspace.pin !== undefined,
       });
     }
 
@@ -91,6 +101,7 @@ export const createWorkspace = mutation({
     const now = Date.now();
     const workspaceId = await ctx.db.insert('workspaces', {
       name,
+      pin: newPin(),
       createdBy: userId,
       createdAt: now,
       updatedAt: now,
@@ -119,11 +130,30 @@ export const createWorkspace = mutation({
  * workspace where every subsequent query throws.
  */
 export const setActiveWorkspace = mutation({
-  args: { workspaceId: v.id('workspaces') },
+  args: { workspaceId: v.id('workspaces'), pin: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
 
     await assertMember(ctx, args.workspaceId, userId);
+
+    const workspace = await ctx.db.get(args.workspaceId);
+    if (!workspace) {
+      throw new ConvexError('Family not found.');
+    }
+
+    // Only a switch *away from* a workspace asks for the code. The first pick
+    // after signing in has nothing on screen to protect, and re-selecting the
+    // workspace you are already in changes nothing.
+    const user = await ctx.db.get(userId);
+    const switching =
+      user?.activeWorkspaceId !== undefined &&
+      user.activeWorkspaceId !== args.workspaceId;
+
+    if (switching && workspace.pin !== undefined) {
+      if (args.pin?.trim() !== workspace.pin) {
+        throw new ConvexError('That code is not right.');
+      }
+    }
 
     await ctx.db.patch(userId, {
       activeWorkspaceId: args.workspaceId,
@@ -330,5 +360,44 @@ export const removeMember = mutation({
     }
 
     return { removed: true };
+  },
+});
+
+/**
+ * This workspace's switch code, for the family settings screen.
+ *
+ * Every member can read it: it is what they type to get back in, not a secret
+ * kept from them.
+ */
+export const workspacePin = query({
+  args: { workspaceId: v.id('workspaces') },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    await assertMember(ctx, args.workspaceId, userId);
+
+    const workspace = await ctx.db.get(args.workspaceId);
+    return workspace?.pin ?? null;
+  },
+});
+
+/**
+ * Sets or regenerates the switch code.
+ *
+ * `pin` omitted means "give me a new random one", which is also how a
+ * workspace created before this column gets its first code.
+ */
+export const setWorkspacePin = mutation({
+  args: { workspaceId: v.id('workspaces'), pin: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    await assertMember(ctx, args.workspaceId, userId);
+
+    const pin = args.pin === undefined ? newPin() : args.pin.trim();
+    if (!/^\d{6}$/.test(pin)) {
+      throw new ConvexError('The code has to be 6 digits.');
+    }
+
+    await ctx.db.patch(args.workspaceId, { pin, updatedAt: Date.now() });
+    return pin;
   },
 });

@@ -23,7 +23,13 @@ export function FamilySection() {
     active ? { workspaceId: active.id as Id<'workspaces'> } : 'skip'
   );
 
+  const pin = useQuery(
+    api.workspaces.workspacePin,
+    active ? { workspaceId: active.id as Id<'workspaces'> } : 'skip'
+  );
+
   const rename = useMutation(api.workspaces.renameWorkspace);
+  const setPin = useMutation(api.workspaces.setWorkspacePin);
   const addMember = useMutation(api.workspaces.addMember);
   const removeMember = useMutation(api.workspaces.removeMember);
   const revokeInvite = useMutation(api.workspaces.revokeInvite);
@@ -69,6 +75,33 @@ export function FamilySection() {
             Save
           </Button>
         </form>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-lg font-semibold">Switch code</h2>
+        <p className="text-sm text-muted-foreground">
+          Asked for before anyone switches into this family from another one.
+          Everyone here can see it.
+        </p>
+        <div className="flex items-center gap-2 max-w-md">
+          <span className="font-mono text-lg tracking-[0.3em]">
+            {pin ?? '——————'}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              setPin({ workspaceId })
+                .then(() => toast.success('New switch code generated'))
+                .catch((err) => toast.error(message(err)))
+                .finally(() => setBusy(false));
+            }}
+          >
+            {pin ? 'Generate a new one' : 'Generate a code'}
+          </Button>
+        </div>
       </section>
 
       <section className="flex flex-col gap-2">

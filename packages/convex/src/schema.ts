@@ -30,6 +30,15 @@ export default defineSchema({
   // A workspace is a family: the unit every row of financial data belongs to.
   workspaces: defineTable({
     name: v.string(),
+    // A 6-digit code asked for before switching into this workspace, so a
+    // shared device cannot be nudged into another family's finances. Optional:
+    // workspaces created before the column have none, and one without a code
+    // switches without asking.
+    //
+    // ponytail: stored in the clear and compared directly — it is a 6-digit
+    // code any member can read in settings, not a password. Hash it, and rate
+    // limit `setActiveWorkspace`, if it ever gates anything but the switch.
+    pin: v.optional(v.string()),
     createdBy: v.id('users'),
     createdAt: v.number(),
     updatedAt: v.number(),

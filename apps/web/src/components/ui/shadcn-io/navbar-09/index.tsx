@@ -260,6 +260,8 @@ export interface Navbar09Workspace {
   id: string;
   name: string;
   isActive: boolean;
+  /** Switching into this one needs its 6-digit code. */
+  hasPin?: boolean;
 }
 
 export interface Navbar09Props extends React.HTMLAttributes<HTMLElement> {
